@@ -8,15 +8,16 @@ Compatibility
 
 Only the games listed below are supported.
 
-| Game                                             | ID         |
-| ------------------------------------------------ | ---------- |
-| この世の果てで恋を唄う少女YU-NO (エルフclassics) | yuno       |
-| YU-NO (English translation patch)                | yuno-eng   |
-| 同級生 Windows版                                 | doukyuusei |
-| 下級生                                           | kakyuusei  |
-| 遺作 リニューアル                                | isaku      |
-| 臭作                                             | shuusaku   |
-| 愛姉妹 ～二人の果実～                            | aishimai   |
+| Game                                             | ID          |
+| ------------------------------------------------ | ----------- |
+| この世の果てで恋を唄う少女YU-NO (エルフclassics) | yuno        |
+| YU-NO (English translation patch)                | yuno-eng    |
+| 同級生 Windows版                                 | doukyuusei  |
+| 同級生2                                          | doukyuusei2 |
+| 下級生                                           | kakyuusei   |
+| 遺作 リニューアル                                | isaku       |
+| 臭作                                             | shuusaku    |
+| 愛姉妹 ～二人の果実～                            | aishimai    |
 
 Additional Features
 -------------------
