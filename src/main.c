@@ -423,6 +423,8 @@ static bool set_game_from_config(void)
 	const char *name = NULL;
 	if (!strcmp(config.title, "～この世の果てで恋を唄う少女～")) {
 		name = "yuno";
+	} else if (!strcmp(config.title, "この世の果てで恋を唄う少女YU-NO")) {
+		name = "yuno";
 	} else if (!strcmp(config.title, "YU-NO - The Girl that Chants Love at the Edge of the World")) {
 		name = "yuno-eng";
 	} else if (!strcmp(config.title, "ｼｬﾝｸﾞﾘﾗ")) {
