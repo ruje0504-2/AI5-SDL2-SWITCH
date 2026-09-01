@@ -16,6 +16,11 @@
 
 #include <SDL_ttf.h>
 
+#ifdef __SWITCH__
+#include <ft2build.h>
+#include FT_FREETYPE_H
+#endif
+
 #include "nulib.h"
 #include "nulib/file.h"
 #include "ai5/mes.h"
@@ -25,6 +30,7 @@
 #include "gfx_private.h"
 #include "gfx.h"
 #include "memory.h"
+#include "swlog.h"
 
 #ifndef AI5_DATA_DIR
 #define AI5_DATA_DIR "."
@@ -91,11 +97,142 @@ static struct font *font_lookup(int size)
 	return NULL;
 }
 
+#ifdef __SWITCH__
+#ifdef EMBED_KOSUGI
+static unsigned long diag_rwread(FT_Stream stream, unsigned long offset,
+		unsigned char *buffer, unsigned long count)
+{
+	SDL_RWops *src = (SDL_RWops *)stream->descriptor.pointer;
+	SDL_RWseek(src, (int)offset, RW_SEEK_SET);
+	if (count == 0)
+		return 0;
+	return (unsigned long)SDL_RWread(src, buffer, 1, (int)count);
+}
+
+static void ft_diag(void)
+{
+	static bool done = false;
+	if (done)
+		return;
+	done = true;
+	FT_Library lib = NULL;
+	FT_Face face = NULL;
+	FT_Error err = FT_Init_FreeType(&lib);
+	sw_log("ft_diag: FT_Init_FreeType err=%d", (int)err);
+	if (err)
+		return;
+	err = FT_New_Memory_Face(lib, font_kosugi, font_kosugi_len, 0, &face);
+	sw_log("ft_diag: FT_New_Memory_Face err=%d face=%p", (int)err, (void*)face);
+	if (err || !face)
+		return;
+	sw_log("ft_diag: num_glyphs=%ld family=%s", face->num_glyphs,
+		face->family_name ? face->family_name : "?");
+	err = FT_Set_Pixel_Sizes(face, 0, 16);
+	sw_log("ft_diag: FT_Set_Pixel_Sizes err=%d", (int)err);
+	FT_UInt gi = FT_Get_Char_Index(face, 0x4ECE);
+	sw_log("ft_diag: U+4ECE glyph_index=%u", gi);
+	err = FT_Load_Glyph(face, gi, FT_LOAD_DEFAULT);
+	sw_log("ft_diag: FT_Load_Glyph err=%d", (int)err);
+	if (!err) {
+		FT_GlyphSlot slot = face->glyph;
+		int nc = (slot->format == FT_GLYPH_FORMAT_OUTLINE) ? slot->outline.n_contours : -1;
+		int np = (slot->format == FT_GLYPH_FORMAT_OUTLINE) ? slot->outline.n_points : -1;
+		sw_log("ft_diag: format=%ld n_contours=%d n_points=%d",
+			slot->format, nc, np);
+		sw_log("ft_diag: metrics bearingY=%ld height=%ld advance=%ld",
+			slot->metrics.horiBearingY, slot->metrics.height, slot->metrics.horiAdvance);
+		err = FT_Render_Glyph(slot, FT_RENDER_MODE_NORMAL);
+		int nz = 0;
+		for (unsigned r = 0; r < slot->bitmap.rows; r++)
+			for (unsigned c = 0; c < slot->bitmap.width; c++)
+				if (slot->bitmap.buffer[r * slot->bitmap.pitch + c])
+					nz++;
+		sw_log("ft_diag: FT_Render_Glyph(NORMAL) err=%d rows=%d width=%d nonzero=%d",
+			(int)err, slot->bitmap.rows, slot->bitmap.width, nz);
+	}
+
+	// Reproduce SDL2_ttf's stream-based face (SDL_RWFromConstMem + FT_Open_Face)
+	SDL_RWops *rw = SDL_RWFromConstMem(font_kosugi, (int)font_kosugi_len);
+	sw_log("ft_diag: SDL_RWFromConstMem rw=%p size=%lld",
+		(void*)rw, rw ? (long long)SDL_RWsize(rw) : -1);
+	if (rw) {
+		FT_Stream st = (FT_Stream)calloc(1, sizeof(*st));
+		st->size = (unsigned long)SDL_RWsize(rw);
+		st->descriptor.pointer = rw;
+		st->read = diag_rwread;
+		FT_Open_Args args;
+		memset(&args, 0, sizeof(args));
+		args.flags = FT_OPEN_STREAM;
+		args.stream = st;
+		FT_Face face2 = NULL;
+		err = FT_Open_Face(lib, &args, 0, &face2);
+		sw_log("ft_diag(stream): FT_Open_Face err=%d face=%p", (int)err, (void*)face2);
+		if (!err && face2) {
+			FT_Set_Pixel_Sizes(face2, 0, 16);
+			FT_UInt gi2 = FT_Get_Char_Index(face2, 0x4ECE);
+			err = FT_Load_Glyph(face2, gi2, FT_LOAD_DEFAULT);
+			sw_log("ft_diag(stream): FT_Load_Glyph err=%d", (int)err);
+			if (!err) {
+				FT_GlyphSlot slot2 = face2->glyph;
+				int nc2 = (slot2->format == FT_GLYPH_FORMAT_OUTLINE) ? slot2->outline.n_contours : -1;
+				sw_log("ft_diag(stream): n_contours=%d n_points=%d",
+					nc2, (slot2->format == FT_GLYPH_FORMAT_OUTLINE) ? slot2->outline.n_points : -1);
+				err = FT_Render_Glyph(slot2, FT_RENDER_MODE_NORMAL);
+				int nz2 = 0;
+				for (unsigned r = 0; r < slot2->bitmap.rows; r++)
+					for (unsigned c = 0; c < slot2->bitmap.width; c++)
+						if (slot2->bitmap.buffer[r * slot2->bitmap.pitch + c])
+							nz2++;
+				sw_log("ft_diag(stream): FT_Render_Glyph(NORMAL) err=%d rows=%d width=%d nonzero=%d",
+					(int)err, slot2->bitmap.rows, slot2->bitmap.width, nz2);
+			// Test FT_LOAD_NO_HINTING (what SDL2_ttf uses after TTF_SetFontHinting(NONE))
+			err = FT_Load_Glyph(face2, gi2, FT_LOAD_DEFAULT | FT_LOAD_NO_HINTING);
+			sw_log("ft_diag(nohint): FT_Load_Glyph err=%d", (int)err);
+			if (!err) {
+				FT_GlyphSlot s3 = face2->glyph;
+				err = FT_Render_Glyph(s3, FT_RENDER_MODE_NORMAL);
+				int nz3 = 0;
+				for (unsigned r = 0; r < s3->bitmap.rows; r++)
+					for (unsigned c = 0; c < s3->bitmap.width; c++)
+						if (s3->bitmap.buffer[r * s3->bitmap.pitch + c])
+							nz3++;
+				sw_log("ft_diag(nohint): render err=%d rows=%d width=%d nonzero=%d",
+					(int)err, s3->bitmap.rows, s3->bitmap.width, nz3);
+			}
+			// Test FT_Set_Char_Size (what SDL2_ttf uses) + FT_LOAD_DEFAULT
+			FT_Set_Char_Size(face2, 0, 16 * 64, 0, 0);
+			err = FT_Load_Glyph(face2, gi2, FT_LOAD_DEFAULT);
+			if (!err) {
+				FT_GlyphSlot s4 = face2->glyph;
+				err = FT_Render_Glyph(s4, FT_RENDER_MODE_NORMAL);
+				int nz4 = 0;
+				for (unsigned r = 0; r < s4->bitmap.rows; r++)
+					for (unsigned c = 0; c < s4->bitmap.width; c++)
+						if (s4->bitmap.buffer[r * s4->bitmap.pitch + c])
+							nz4++;
+				sw_log("ft_diag(charsize): render err=%d rows=%d width=%d nonzero=%d",
+					(int)err, s4->bitmap.rows, s4->bitmap.width, nz4);
+			}
+			}
+		}
+	}
+}
+#endif
+#endif
+
 static struct font *font_insert(int size, TTF_Font *id, TTF_Font *id_outline)
 {
+#ifdef __SWITCH__
+#ifdef EMBED_KOSUGI
+	ft_diag();
+#endif
+#endif
 	int min_x, max_x, min_y, max_y, adv;
 	int ascent = TTF_FontAscent(id);
-	TTF_GlyphMetrics32(id, 'A', &min_x, &max_x, &min_y, &max_y, &adv);
+	if (TTF_GlyphMetrics32(id, 'A', &min_x, &max_x, &min_y, &max_y, &adv) != 0 || max_y <= 0) {
+		// Switch freetype returns bogus vertical metrics; approximate cap height.
+		max_y = size * 11 / 16;
+	}
 
 	// Calculate the y-offset for the font. This is a bit hacky, but it
 	// works reasonably well for most fonts.
@@ -105,6 +242,8 @@ static struct font *font_insert(int size, TTF_Font *id, TTF_Font *id_outline)
 		y_off -= 1;
 	else
 		y_off -= 2;
+	sw_log("font_insert: size=%d ascent=%d y_off=%d max_y=%d adv=%d",
+		size, ascent, y_off, max_y, adv);
 
 	if (nr_fonts >= MAX_FONTS)
 		ERROR("Font table is full");
@@ -254,13 +393,17 @@ static void glyph_blit_indexed(SDL_Surface *glyph, int dst_x, int dst_y, SDL_Sur
 	if (SDL_MUSTLOCK(s))
 		SDL_CALL(SDL_LockSurface, s);
 
-	uint8_t *src_base = glyph->pixels + glyph_y * glyph->pitch + glyph_x;
+	// Glyph surface is 32-bit ARGB8888 (blended); alpha byte is at offset 3 on
+	// little-endian. Threshold alpha to build the 1-bit mask for the 8bpp dst.
+	const int glyph_bpp = glyph->format->BytesPerPixel;
+	const int a_off = glyph_bpp == 4 ? 3 : 0;
+	uint8_t *src_base = glyph->pixels + glyph_y * glyph->pitch + glyph_x * glyph_bpp;
 	uint8_t *dst_base = s->pixels + dst_y * s->pitch + dst_x;
 	for (int row = 0; row < glyph_h; row++) {
 		uint8_t *src_p = src_base + row * glyph->pitch;
 		uint8_t *dst_p = dst_base + row * s->pitch;
-		for (int col = 0; col < glyph_w; col++, dst_p++, src_p++) {
-			if (*src_p != 0) {
+		for (int col = 0; col < glyph_w; col++, dst_p++, src_p += glyph_bpp) {
+			if (src_p[a_off] >= 128) {
 				*dst_p = gfx.text.fg;
 				if (text_shadow == TEXT_SHADOW_A) {
 					dst_p[1] = gfx.text.bg;
@@ -284,9 +427,32 @@ static unsigned gfx_text_draw_glyph_indexed(SDL_Surface *dst, int x, int y, uint
 {
 	assert(gfx.text.fg < dst->format->palette->ncolors);
 	SDL_Color fg = dst->format->palette->colors[gfx.text.fg];
-	SDL_Surface *s = TTF_RenderGlyph32_Solid(cur_font->id, ch, fg);
+	// Switch freetype's mono (FT_RENDER_MODE_MONO) rasterizer produces empty
+	// bitmaps; use grayscale (blended) rendering and threshold the alpha.
+	SDL_Surface *s = TTF_RenderGlyph32_Blended(cur_font->id, ch, fg);
 	if (!s)
-		ERROR("TTF_RenderGlyph32_Solid: %s", TTF_GetError());
+		ERROR("TTF_RenderGlyph32_Blended: %s", TTF_GetError());
+	{
+		static int gcnt = 0;
+		if (gcnt < 3) {
+			gcnt++;
+			int nz = 0, nz_any = 0;
+			for (int r = 0; r < s->h; r++) {
+				uint8_t *row = (uint8_t*)s->pixels + r * s->pitch;
+				for (int c = 0; c < s->w; c++) {
+					if (row[c * 4 + 3]) nz++;
+					for (int b = 0; b < 4; b++)
+						if (row[c * 4 + b]) { nz_any++; break; }
+				}
+			}
+			uint8_t *p0 = (uint8_t*)s->pixels;
+			sw_log("glyph_render: U+%04x w=%d h=%d alpha_nz=%d any_nz=%d fg=%d fga=%d fmt=0x%x bpp=%d pitch=%d",
+				ch, s->w, s->h, nz, nz_any, gfx.text.fg, fg.a,
+				s->format->format, (int)s->format->BytesPerPixel, s->pitch);
+			sw_log("glyph_render: px0=%02x%02x%02x%02x px1=%02x%02x%02x%02x px2=%02x%02x%02x%02x",
+				p0[0],p0[1],p0[2],p0[3], p0[4],p0[5],p0[6],p0[7], p0[8],p0[9],p0[10],p0[11]);
+		}
+	}
 
 	y -= cur_font->y_off;
 	unsigned w = s->w;
@@ -382,8 +548,12 @@ void ui_draw_text(SDL_Surface *s, int x, int y, const char *text, SDL_Color colo
 	if (!ui_font && !ui_font_init()) {
 		return;
 	}
-	SDL_Surface *text_s = TTF_RenderUTF8_Solid(ui_font, text, color);
+	// Switch: mono (Solid) rasterizer renders empty; use grayscale (Blended)
+	SDL_Surface *text_s = TTF_RenderUTF8_Blended(ui_font, text, color);
+	if (!text_s)
+		return;
 	SDL_Rect text_r = { x, y - (TTF_FontAscent(ui_font) - ui_ascent) - ui_ascent / 2, text_s->w, text_s->h };
+	SDL_SetSurfaceBlendMode(text_s, SDL_BLENDMODE_BLEND);
 	SDL_CALL(SDL_BlitSurface, text_s, NULL, s, &text_r);
 	SDL_FreeSurface(text_s);
 }
@@ -421,7 +591,7 @@ void gfx_text_set_size(int size, int weight)
 	if (!font) {
 		TTF_Font *f;
 		TTF_Font *f_outline = NULL;
-		enum font_type type = yuno_eng ? FONT_ENG : (size <= 18 ? FONT_SMALL : FONT_LARGE);
+		enum font_type type = yuno_eng ? FONT_ENG : FONT_LARGE;
 		open_font(&font_spec[type], size, &f, &f_outline);
 		font = font_insert(size, f, f_outline);
 	}

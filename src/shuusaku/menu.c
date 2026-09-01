@@ -115,7 +115,7 @@ static void draw_menu(struct menu_data *menu)
 		gfx_copy(0, MENU_BG_Y, w, MENU_BUTTON_H, 5, menu->x, menu->y, 0);
 	} else {
 		// up arrow
-		draw_scroll_button(menu, MENU_BG_Y, 936, "\x81\xa3");//"▲");
+		draw_scroll_button(menu, MENU_BG_Y, 936, "\xa1\xf8");//"▲");
 		gfx_copy(0, 936, w, MENU_BUTTON_H, 5, menu->x, menu->y, 0);
 	}
 
@@ -165,7 +165,7 @@ static void draw_menu(struct menu_data *menu)
 		// down arrow
 		const unsigned y_off = MENU_MAX_H - MENU_BUTTON_H;
 		draw_scroll_button(menu, MENU_BG_Y + MENU_BUTTON_H + MENU_ENTRY_H * 4, 970,
-				"\x81\xa5");//"▼");
+				"\xa8\x8b");//"▼");
 		gfx_copy(0, 970, w, MENU_BUTTON_H, 5, menu->x, menu->y + y_off, 0);
 	}
 
@@ -284,6 +284,44 @@ static void menu_set_button_hotspots(struct menu_data *menu)
 
 static unsigned menuexec_roulette(struct menu_entry *entries, unsigned nr_entries);
 
+// Switch: D-pad driven selection for the otherwise mouse-only choice menu.
+static bool menu_button_valid(struct menu_data *menu, int b)
+{
+	int page_entries = (int)menu->nr_entries - (int)menu->page * 4;
+	if (page_entries > 4)
+		page_entries = 4;
+	if (b == MENU_PAGE_UP)
+		return menu->page > 0;
+	if (b == MENU_PAGE_DOWN)
+		return menu->page * 4 + 4 < menu->nr_entries;
+	if (b >= MENU_ENTRY_0 && b <= MENU_ENTRY_3)
+		return (b - MENU_ENTRY_0) < page_entries;
+	return false;
+}
+
+// dir: -1 = up, +1 = down
+static enum menu_button menu_dpad_move(struct menu_data *menu, enum menu_button cur, int dir)
+{
+	if (cur == MENU_NONE) {
+		for (int b = (dir > 0) ? MENU_PAGE_UP : MENU_PAGE_DOWN;
+				b >= MENU_PAGE_UP && b <= MENU_PAGE_DOWN; b += dir) {
+			if (menu_button_valid(menu, b))
+				return (enum menu_button)b;
+		}
+		return MENU_NONE;
+	}
+	for (int step = 1; step <= 6; step++) {
+		int b = (int)cur + dir * step;
+		if (b < MENU_PAGE_UP)
+			b += 6;
+		if (b > MENU_PAGE_DOWN)
+			b -= 6;
+		if (menu_button_valid(menu, b))
+			return (enum menu_button)b;
+	}
+	return cur;
+}
+
 unsigned shuusaku_menuexec(struct menu_entry *entries, unsigned nr_entries, unsigned mode)
 {
 	if (mode == 1) {
@@ -327,9 +365,22 @@ unsigned shuusaku_menuexec(struct menu_entry *entries, unsigned nr_entries, unsi
 
 	int ret = 0;
 	enum menu_button prev_selection = MENU_NONE;
+	enum menu_button dpad_sel = MENU_NONE;
+	bool dpad_active = false;
 	while (true) {
-		// get selected entry
-		enum menu_button selection = menu_get_selected(&menu);
+		// Switch: D-pad navigation (move selection up/down)
+		if (input_down(INPUT_UP)) {
+			input_wait_until_up(INPUT_UP);
+			dpad_active = true;
+			dpad_sel = menu_dpad_move(&menu, dpad_sel, -1);
+		} else if (input_down(INPUT_DOWN)) {
+			input_wait_until_up(INPUT_DOWN);
+			dpad_active = true;
+			dpad_sel = menu_dpad_move(&menu, dpad_sel, +1);
+		}
+
+		// get selected entry (D-pad overrides mouse once D-pad is used)
+		enum menu_button selection = dpad_active ? dpad_sel : menu_get_selected(&menu);
 		if (selection != prev_selection) {
 			menu_draw_selection(&menu, prev_selection, selection);
 			prev_selection = selection;
@@ -345,11 +396,15 @@ unsigned shuusaku_menuexec(struct menu_entry *entries, unsigned nr_entries, unsi
 				menu.page -= 1;
 				draw_menu(&menu);
 				menu_set_button_hotspots(&menu);
+				dpad_sel = MENU_ENTRY_0;
+				prev_selection = MENU_NONE;
 				break;
 			case MENU_PAGE_DOWN:
 				menu.page += 1;
 				draw_menu(&menu);
 				menu_set_button_hotspots(&menu);
+				dpad_sel = MENU_ENTRY_0;
+				prev_selection = MENU_NONE;
 				break;
 			default:
 				ret = menu.entries[menu.page*4 + selection - 1].index;

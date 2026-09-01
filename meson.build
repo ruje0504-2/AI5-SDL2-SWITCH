@@ -11,6 +11,10 @@ if host_machine.system() == 'windows'
   static_link_args = ['-static', '-lstdc++']
   embed_fonts = true
   no_embed_noto = true
+elif host_machine.system() == 'horizon'
+  static_libs = true
+  static_link_args = ['-lstdc++']
+  embed_fonts = true
 endif
 
 libm = meson.get_compiler('c').find_library('m', required: false)

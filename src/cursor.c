@@ -16,6 +16,7 @@
 
 #include <stdlib.h>
 #include <stdatomic.h>
+#include <stdio.h>
 #include <string.h>
 #include <SDL.h>
 
@@ -847,6 +848,8 @@ static uint32_t anim_cb(uint32_t interval, void *_)
 void cursor_init(const char *exe_path)
 {
 	system_cursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_ARROW);
+	if (!exe_path)
+		return;
 
 	struct buffer buf;
 	struct vma *vma = NULL;
@@ -997,18 +1000,53 @@ void cursor_hide(void)
 	SDL_ShowCursor(SDL_DISABLE);
 }
 
+#ifdef __SWITCH__
+// Switch: SDL 的 WarpMouse 在 Switch 驱动上不可靠(相对鼠标, 无绝对 Warp),
+// 因此直接维护游戏坐标系里的光标位置, 由摇杆驱动, 与 SDL 鼠标完全脱钩。
+static float switch_cursor_x = 0.0f;
+static float switch_cursor_y = 0.0f;
+#endif
+
 void cursor_set_pos(unsigned x, unsigned y)
 {
 	CURSOR_LOG("cursor_set_pos(%u,%u)", x, y);
 	if (config.no_warp_mouse)
 		return;
+#ifdef __SWITCH__
+	switch_cursor_x = (float)x;
+	switch_cursor_y = (float)y;
+#else
 	int wx, wy;
 	SDL_RenderLogicalToWindow(gfx.renderer, x, y, &wx, &wy);
 	SDL_WarpMouseInWindow(gfx.window, wx, wy);
+#endif
+}
+
+void cursor_move_stick(float dx, float dy)
+{
+#ifdef __SWITCH__
+	float nx = clamp(0.0f, (float)gfx_view.w, switch_cursor_x + dx);
+	float ny = clamp(0.0f, (float)gfx_view.h, switch_cursor_y + dy);
+	// 光标实际移动时才标脏, 触发立即重绘(否则箭头会卡在旧位置, 表现为刷新卡顿)
+	if (nx != switch_cursor_x || ny != switch_cursor_y) {
+		switch_cursor_x = nx;
+		switch_cursor_y = ny;
+		gfx_screen_dirty();
+	}
+#else
+	(void)dx;
+	(void)dy;
+#endif
 }
 
 void cursor_get_pos(unsigned *x_out, unsigned *y_out)
 {
+#ifdef __SWITCH__
+	*x_out = switch_cursor_x < 0 ? 0
+		: (switch_cursor_x >= gfx_view.w ? gfx_view.w - 1 : (unsigned)switch_cursor_x);
+	*y_out = switch_cursor_y < 0 ? 0
+		: (switch_cursor_y >= gfx_view.h ? gfx_view.h - 1 : (unsigned)switch_cursor_y);
+#else
 	int x, y;
 	SDL_GetMouseState(&x, &y);
 
@@ -1016,6 +1054,7 @@ void cursor_get_pos(unsigned *x_out, unsigned *y_out)
 	SDL_RenderWindowToLogical(gfx.renderer, x, y, &fx, &fy);
 	*x_out = fx < 0 ? 0 : (fx >= gfx_view.w ? gfx_view.w - 1 : (unsigned)fx);
 	*y_out = fy < 0 ? 0 : (fy >= gfx_view.h ? gfx_view.h - 1 : (unsigned)fy);
+#endif
 }
 
 void cursor_swap(void)

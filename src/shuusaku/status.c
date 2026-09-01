@@ -120,16 +120,28 @@ static void status_window_update(void)
 		return;
 	SDL_CALL(SDL_UpdateTexture, status.texture, NULL, status.display->pixels,
 			status.display->pitch);
-	SDL_CALL(SDL_RenderClear, status.renderer);
-	SDL_CALL(SDL_RenderCopy, status.renderer, status.texture, NULL, NULL);
-	SDL_RenderPresent(status.renderer);
+	gfx_screen_dirty();
+}
+
+void status_window_present(void)
+{
+	if (!status.open)
+		return;
+	// 640x64 状态栏叠放在主窗口顶部
+#ifdef __SWITCH__
+	SDL_Rect dst = { 0, 0,
+		(int)gfx_game_to_logical_x(640), (int)gfx_game_to_logical_y(64) };
+#else
+	SDL_Rect dst = { 0, 0, 640, 64 };
+#endif
+	SDL_RenderCopy(gfx.renderer, status.texture, NULL, &dst);
 }
 
 static void status_close(void)
 {
-	SDL_HideWindow(status.window);
 	audio_sysse_play("se03.wav", 0);
 	status.open = false;
+	gfx_screen_dirty();
 }
 
 void shuusaku_status_window_toggle(void)
@@ -141,7 +153,7 @@ void shuusaku_status_window_toggle(void)
 			return;
 		status.open = true;
 		status_window_draw();
-		SDL_ShowWindow(status.window);
+		status_window_update();
 		audio_sysse_play("se02.wav", 0);
 	}
 }
@@ -160,43 +172,16 @@ void shuusaku_status_update(void)
 
 bool shuusaku_status_window_event(SDL_Event *e)
 {
-	if (!status.open)
-		return false;
-	switch (e->type) {
-	case SDL_WINDOWEVENT:
-		if (e->window.windowID != status.window_id)
-			break;
-		switch (e->window.event) {
-		case SDL_WINDOWEVENT_SHOWN:
-		case SDL_WINDOWEVENT_EXPOSED:
-		case SDL_WINDOWEVENT_RESIZED:
-		case SDL_WINDOWEVENT_SIZE_CHANGED:
-		case SDL_WINDOWEVENT_MAXIMIZED:
-		case SDL_WINDOWEVENT_RESTORED:
-			status_window_update();
-			return true;
-		case SDL_WINDOWEVENT_CLOSE:
-			assert(status.open);
-			shuusaku_status_window_toggle();
-			return true;
-		}
-		break;
-	}
+	(void)e;
 	return false;
 }
 
 void shuusaku_status_init(void)
 {
-	int x, y;
-	SDL_GetWindowPosition(gfx.window, &x, &y);
-	SDL_CTOR(SDL_CreateWindow, status.window, "風呂・食事＆アイテム",
-			x, y, STATUS_WINDOW_W, STATUS_WINDOW_H,
-			SDL_WINDOW_HIDDEN);
-	status.window_id = SDL_GetWindowID(status.window);
-	SDL_CTOR(SDL_CreateRenderer, status.renderer, status.window, -1, 0);
-	SDL_CALL(SDL_SetRenderDrawColor, status.renderer, 0, 0, 0,  SDL_ALPHA_OPAQUE);
-	SDL_CALL(SDL_RenderSetLogicalSize, status.renderer, STATUS_WINDOW_W,
-			STATUS_WINDOW_H);
+	// Switch 单窗口: 复用主渲染器
+	status.window = gfx.window;
+	status.renderer = gfx.renderer;
+	status.window_id = SDL_GetWindowID(gfx.window);
 	SDL_CTOR(SDL_CreateTexture, status.texture, status.renderer,
 			gfx.display->format->format, SDL_TEXTUREACCESS_STATIC,
 			STATUS_WINDOW_W, STATUS_WINDOW_H);
@@ -206,10 +191,6 @@ void shuusaku_status_init(void)
 	SDL_CTOR(SDL_CreateRGBSurfaceWithFormat, status.display, 0,
 			STATUS_WINDOW_W, STATUS_WINDOW_H,
 			GFX_DIRECT_BPP, GFX_DIRECT_FORMAT);
-
-	SDL_Surface *icon = icon_get(2);
-	if (icon)
-		SDL_SetWindowIcon(status.window, icon);
 
 	// load UI parts
 	struct cg *cg = asset_cg_load("propitem.gpx");

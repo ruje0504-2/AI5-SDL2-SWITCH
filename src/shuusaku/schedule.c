@@ -326,16 +326,10 @@ void schedule_window_draw(void)
 
 void schedule_window_init(void)
 {
-	int x, y;
-	SDL_GetWindowPosition(gfx.window, &x, &y);
-	SDL_CTOR(SDL_CreateWindow, schedule.window, "スケジュール表",
-			x, y, SCHEDULE_WINDOW_W, SCHEDULE_WINDOW_H,
-			SDL_WINDOW_HIDDEN);
-	schedule.window_id = SDL_GetWindowID(schedule.window);
-	SDL_CTOR(SDL_CreateRenderer, schedule.renderer, schedule.window, -1, 0);
-	SDL_CALL(SDL_SetRenderDrawColor, schedule.renderer, 0, 0, 0,  SDL_ALPHA_OPAQUE);
-	SDL_CALL(SDL_RenderSetLogicalSize, schedule.renderer, SCHEDULE_WINDOW_W,
-			SCHEDULE_WINDOW_H);
+	// Switch 单窗口: 复用主窗口/主渲染器, 日程表作为叠加层
+	schedule.window = gfx.window;
+	schedule.renderer = gfx.renderer;
+	schedule.window_id = SDL_GetWindowID(gfx.window);
 	SDL_CTOR(SDL_CreateTexture, schedule.texture, schedule.renderer,
 			gfx.display->format->format, SDL_TEXTUREACCESS_STATIC,
 			SCHEDULE_WINDOW_W, SCHEDULE_WINDOW_H);
@@ -348,10 +342,6 @@ void schedule_window_init(void)
 	SDL_CTOR(SDL_CreateRGBSurfaceWithFormat, schedule.saved, 0,
 			160, SCHEDULE_WINDOW_H,
 			GFX_DIRECT_BPP, GFX_DIRECT_FORMAT);
-
-	SDL_Surface *icon = icon_get(1);
-	if (icon)
-		SDL_SetWindowIcon(schedule.window, icon);
 
 	// load UI parts
 	struct cg *cg = asset_cg_load("dialy.gpx");
@@ -398,9 +388,9 @@ static void update_time(void)
 
 static void schedule_close(void)
 {
-	SDL_HideWindow(schedule.window);
 	audio_sysse_play("se03.wav", 0);
 	schedule.open = false;
+	gfx_screen_dirty();
 }
 
 bool shuusaku_subwindow_valid(void)
@@ -427,8 +417,7 @@ void shuusaku_schedule_window_toggle(void)
 			// round down to nearest multiple of 2
 			schedule.start_t = min(136, schedule.current_t) & ~1;
 		}
-		schedule_window_draw();
-		SDL_ShowWindow(schedule.window);
+		shuusaku_schedule_update();
 		audio_sysse_play("se02.wav", 0);
 	}
 }
@@ -443,9 +432,21 @@ void schedule_window_update(void)
 	}
 	SDL_CALL(SDL_UpdateTexture, schedule.texture, NULL, schedule.display->pixels,
 			schedule.display->pitch);
-	SDL_CALL(SDL_RenderClear, schedule.renderer);
-	SDL_CALL(SDL_RenderCopy, schedule.renderer, schedule.texture, NULL, NULL);
-	SDL_RenderPresent(schedule.renderer);
+	gfx_screen_dirty();
+}
+
+void schedule_window_present(void)
+{
+	if (!schedule.open)
+		return;
+	// 800x376 日程表缩放到主窗口逻辑尺寸内(居中)
+#ifdef __SWITCH__
+	SDL_Rect dst = { 0, (int)gfx_game_to_logical_y(50),
+		(int)gfx_game_to_logical_x(640), (int)gfx_game_to_logical_y(300) };
+#else
+	SDL_Rect dst = { 0, 50, 640, 300 };
+#endif
+	SDL_RenderCopy(gfx.renderer, schedule.texture, NULL, &dst);
 }
 
 void shuusaku_schedule_update(void)
@@ -715,24 +716,6 @@ bool shuusaku_schedule_window_event(SDL_Event *e)
 	if (!schedule.open)
 		return false;
 	switch (e->type) {
-	case SDL_WINDOWEVENT:
-		if (e->window.windowID != schedule.window_id)
-			break;
-		switch (e->window.event) {
-		case SDL_WINDOWEVENT_SHOWN:
-		case SDL_WINDOWEVENT_EXPOSED:
-		case SDL_WINDOWEVENT_RESIZED:
-		case SDL_WINDOWEVENT_SIZE_CHANGED:
-		case SDL_WINDOWEVENT_MAXIMIZED:
-		case SDL_WINDOWEVENT_RESTORED:
-			schedule_window_update();
-			return true;
-		case SDL_WINDOWEVENT_CLOSE:
-			assert(schedule.open);
-			shuusaku_schedule_window_toggle();
-			return true;
-		}
-		break;
 	case SDL_KEYDOWN:
 		if (e->key.windowID != schedule.window_id)
 			break;
@@ -750,7 +733,16 @@ bool shuusaku_schedule_window_event(SDL_Event *e)
 			break;
 		if (e->button.button != SDL_BUTTON_LEFT)
 			return true;
+#ifdef __SWITCH__
+		{
+			float fx, fy;
+			SDL_RenderWindowToLogical(gfx.renderer, e->button.x, e->button.y, &fx, &fy);
+			schedule_mouse_down((int)gfx_logical_to_game_x(fx),
+					(int)gfx_logical_to_game_y(fy));
+		}
+#else
 		schedule_mouse_down(e->button.x, e->button.y);
+#endif
 		return true;
 	case SDL_MOUSEWHEEL:
 		if (e->wheel.windowID != schedule.window_id)
@@ -761,6 +753,18 @@ bool shuusaku_schedule_window_event(SDL_Event *e)
 			scroll_left();
 		}
 		return true;
+	case SDL_JOYBUTTONDOWN:
+		// Switch: D-pad left/right scroll the schedule timeline.
+		// (L/R are reserved for toggling the schedule/status windows.)
+		switch (e->jbutton.button) {
+		case 12: // D-pad left
+			scroll_left();
+			return true;
+		case 14: // D-pad right
+			scroll_right();
+			return true;
+		}
+		break;
 	}
 	return false;
 }

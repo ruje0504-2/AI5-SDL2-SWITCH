@@ -28,6 +28,16 @@ struct cg;
 struct gfx_view { unsigned w, h; };
 extern struct gfx_view gfx_view;
 
+#ifdef __SWITCH__
+// Switch 显示分辨率(逻辑) 960x720, 画面置中
+#define GFX_DISPLAY_W 960
+#define GFX_DISPLAY_H 720
+static inline float gfx_logical_to_game_x(float x) { return x * gfx_view.w / (float)GFX_DISPLAY_W; }
+static inline float gfx_logical_to_game_y(float y) { return y * gfx_view.h / (float)GFX_DISPLAY_H; }
+static inline float gfx_game_to_logical_x(float x) { return x * (float)GFX_DISPLAY_W / gfx_view.w; }
+static inline float gfx_game_to_logical_y(float y) { return y * (float)GFX_DISPLAY_H / gfx_view.h; }
+#endif
+
 void gfx_init(const char *name);
 void gfx_set_icon(void);
 void gfx_update(void);

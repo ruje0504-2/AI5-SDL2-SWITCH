@@ -31,6 +31,7 @@
 #include "memory.h"
 #include "popup_menu.h"
 #include "savedata.h"
+#include "swlog.h"
 #include "texthook.h"
 #include "sys.h"
 #include "vm.h"
@@ -116,14 +117,14 @@ void shuusaku_draw_text(const char *_text)
 			continue;
 		}
 		int ch;
-		bool zenkaku = SJIS_2BYTE(*text);
+		bool zenkaku = GBK_2BYTE(*text);
 		uint16_t char_space = zenkaku ? 2 : 1;
 		if (x + char_space > end_x) {
 			x = start_x;
 			y += line_space;
 		}
 
-		text = (const uint8_t*)sjis_char2unicode((const char*)text, &ch);
+		text = (const uint8_t*)gbk_char2unicode((const char*)text, &ch);
 		gfx_text_draw_glyph(x * 8, y, surface, ch);
 		x += char_space;
 	}
@@ -1447,8 +1448,8 @@ static void util_credits(struct param_list *params)
 	const char *text_p = (char*)text;
 	while (*text_p) {
 		int ch;
-		unsigned char_space = font_size / (SJIS_2BYTE(*text_p) ? 1 : 2);
-		text_p = sjis_char2unicode(text_p, &ch);
+		unsigned char_space = font_size / (GBK_2BYTE(*text_p) ? 1 : 2);
+		text_p = gbk_char2unicode(text_p, &ch);
 		gfx_text_draw_glyph(x, y, 0, ch);
 		x += char_space;
 	}
@@ -1680,6 +1681,17 @@ static bool shuusaku_handle_event(SDL_Event *e)
 			return true;
 		}
 		break;
+	case SDL_JOYBUTTONDOWN:
+		// Switch: L toggles schedule, R toggles status.
+		switch (e->jbutton.button) {
+		case 6: // L
+			shuusaku_schedule_window_toggle();
+			return true;
+		case 7: // R
+			shuusaku_status_window_toggle();
+			return true;
+		}
+		break;
 	}
 
 	return false;
@@ -1697,24 +1709,34 @@ static int init_volume(int *val, int ch)
 
 static void shuusaku_init(void)
 {
+	sw_log("shuusaku_init: schedule_window_init start");
 	schedule_window_init();
+	sw_log("shuusaku_init: schedule_window_init ok");
 	shuusaku_status_init();
+	sw_log("shuusaku_init: status_init ok");
 
 	bgm_vol = init_volume(&config.volume.music, AUDIO_CH_BGM);
+	sw_log("shuusaku_init: bgm volume ok");
 	init_volume(&config.volume.se, AUDIO_CH_SE0);
 	init_volume(&config.volume.voice, AUDIO_CH_VOICE0);
+	sw_log("shuusaku_init: volumes ok");
 
 	mem_set_sysvar16(50, config.shuusaku.kettei);
 
 	asset_effect_is_bgm = false;
 
 	text_shadow = TEXT_SHADOW_B;
+	sw_log("shuusaku_init: gfx_text_set_size start");
 	gfx_text_set_size(16, 1);
+	sw_log("shuusaku_init: gfx_text_set_size ok");
 
 	anim_frame_t = 20;
 	anim_load_palette = shuusaku_anim_load_palette;
+	sw_log("shuusaku_init: load selwaku.gpx start");
 	_load_image("selwaku.gpx", 5);
+	sw_log("shuusaku_init: load selwaku.gpx ok");
 	_load_image("bll.gpx", 0);
+	sw_log("shuusaku_init: load bll.gpx ok");
 }
 
 static void shuusaku_update(void)

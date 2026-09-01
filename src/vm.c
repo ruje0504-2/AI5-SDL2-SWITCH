@@ -505,7 +505,7 @@ void vm_draw_text(const char *text, unsigned mult)
 	bool last_char_is_close = false;
 	while (*text) {
 		int ch;
-		bool zenkaku = SJIS_2BYTE(*text);
+		bool zenkaku = GBK_2BYTE(*text);
 		uint16_t this_char_space = zenkaku ? (char_space / mult): (char_space / (mult * 2));
 		uint16_t this_x = x;
 		if (x + (han_line_breaks ? this_char_space : char_space) > end_x) {
@@ -529,7 +529,7 @@ void vm_draw_text(const char *text, unsigned mult)
 			last_char_is_close = false;
 		}
 
-		text = sjis_char2unicode(text, &ch);
+		text = gbk_char2unicode(text, &ch);
 		gfx_text_draw_glyph(x * mult, y, surface, ch);
 		x += this_char_space;
 	}

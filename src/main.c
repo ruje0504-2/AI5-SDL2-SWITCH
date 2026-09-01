@@ -43,6 +43,8 @@
 
 #include "../version.h"
 
+#define SW_LOG(...) do {} while (0)
+
 #define DEFAULT_MSG_SKIP_DELAY 16
 struct config config = {
 	// XXX: Different games have different defaults for bMESTYPE/bDATATYPE.
@@ -481,7 +483,11 @@ void restart(void)
 {
 	if (saved_cwd[0] && chdir(saved_cwd))
 		ERROR("chdir(\"%s\"): %s", saved_cwd, strerror(errno));
+#ifndef __SWITCH__
 	execv(saved_argv[0], saved_argv);
+#else
+	ERROR("restart not supported on Switch");
+#endif
 }
 
 int main(int argc, char *argv[])
@@ -492,6 +498,7 @@ int main(int argc, char *argv[])
 		WARNING("Failed to get cwd");
 		saved_cwd[0] = '\0';
 	}
+	SW_LOG("start: cwd=%s", saved_cwd);
 
 	ai5_target_game = -1;
 	bool have_game = false;
@@ -598,6 +605,31 @@ int main(int argc, char *argv[])
 	argc -= optind;
 	argv += optind;
 
+#ifdef __SWITCH__
+	if (argc == 0) {
+		/* Switch 上默认在 SD 卡找游戏数据目录 */
+		static const char *default_dirs[] = {
+			"/switch/syuusaku",
+			"/switch/ai5/syuusaku",
+			"/switch/ai5-sdl2/syuusaku",
+			NULL
+		};
+		for (int i = 0; default_dirs[i]; i++) {
+			ustat s;
+			if (!stat_utf8(default_dirs[i], &s) && S_ISDIR(s.st_mode)) {
+				chdir(default_dirs[i]);
+				SW_LOG("default-dir: chdir(%s) ok", default_dirs[i]);
+				break;
+			}
+		}
+		{
+			char _c[PATH_MAX];
+			if (getcwd(_c, PATH_MAX))
+				SW_LOG("default-dir: final cwd=%s", _c);
+		}
+	}
+#endif
+
 	if (argc > 1)
 		usage_error("Too many arguments");
 
@@ -635,10 +667,12 @@ int main(int argc, char *argv[])
 	}
 	if (!ini_name)
 		usage_error("Couldn't find AI5WIN.INI (not a game directory?)");
+	SW_LOG("ini found: %s", ini_name);
 
 	// parse ini file
 	if (ini_parse(ini_name, cfg_handler, &config) < 0)
 		sys_error("Failed to read INI file \"%s\"\n", ini_name);
+	SW_LOG("ini parsed: title=%s", config.title ? config.title : "(null)");
 
 	// handle ini without title
 	if (!config.title) {
@@ -691,22 +725,37 @@ int main(int argc, char *argv[])
 #undef DEFAULT_NAME
 
 	// intitialize subsystems
+	SW_LOG("init: start");
 	srand(time(NULL));
 	asset_init();
+	SW_LOG("init: asset_init ok");
 	game->mem_init();
+	SW_LOG("init: mem_init ok");
 	gfx_init(config.title);
+	SW_LOG("init: gfx_init ok (SDL video)");
 	gfx_text_init(config.font_path, config.font_face);
+	SW_LOG("init: gfx_text_init ok");
 	input_init();
+	SW_LOG("init: input_init ok");
 	cursor_init(config.exe_path);
+	SW_LOG("init: cursor_init ok");
 	gfx_set_icon();
+	SW_LOG("init: gfx_set_icon ok");
 	audio_init();
+	SW_LOG("init: audio_init ok");
 	vm_init();
+	SW_LOG("init: vm_init ok");
 
-	if (game->init)
+	if (game->init) {
+		SW_LOG("init: game->init start");
 		game->init();
+		SW_LOG("init: game->init ok");
+	}
 
 	// execute start mes file
+	SW_LOG("init: vm_load_mes start");
 	vm_load_mes(config.start_mes);
+	SW_LOG("init: vm_load_mes ok");
 	if (debug)
 		dbg_repl();
 	game->vm.exec();

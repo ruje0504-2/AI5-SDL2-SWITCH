@@ -25,6 +25,7 @@ void cursor_show(void);
 void cursor_hide(void);
 void cursor_set_pos(unsigned x, unsigned y);
 void cursor_get_pos(unsigned *x, unsigned *y);
+void cursor_move_stick(float dx, float dy);
 void cursor_swap(void);
 
 enum cursor_direction {

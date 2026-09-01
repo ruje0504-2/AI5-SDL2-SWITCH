@@ -60,6 +60,14 @@ static bool key_down[INPUT_NR_INPUTS] = {0};
 uint32_t cursor_swap_event = 0;
 
 static SDL_GameController *controller = NULL;
+static SDL_Joystick *joystick = NULL;
+static vm_timer_t joystick_poll_timer = 0;
+static uint32_t cursor_last_activity = 0;
+
+uint32_t input_cursor_last_activity(void)
+{
+	return cursor_last_activity;
+}
 
 static SDL_GameController *find_controller(void)
 {
@@ -154,6 +162,28 @@ void input_init(void)
 	cursor_swap_event = SDL_RegisterEvents(1);
 	if (cursor_swap_event == (uint32_t)-1)
 		WARNING("Failed to register custom event type");
+
+	// Switch: SDL2 的 switch 手柄驱动把手柄报成普通 joystick(名字派生 GUID),
+	// 游戏控制器子系统认不出来。手动加映射并打开。
+	for (int i = 0; i < SDL_NumJoysticks(); i++) {
+		const char *name = SDL_JoystickNameForIndex(i);
+		if (!name || !strstr(name, "Switch"))
+			continue;
+		SDL_JoystickGUID guid = SDL_JoystickGetDeviceGUID(i);
+		char gs[34];
+		SDL_JoystickGetGUIDString(guid, gs, sizeof(gs));
+		char mapping[512];
+		snprintf(mapping, sizeof(mapping),
+			"%s,%s,a:b0,b:b1,x:b2,y:b3,back:b11,start:b10,"
+			"leftshoulder:b6,rightshoulder:b7,lefttrigger:b8,righttrigger:b9,"
+			"leftstick:b4,rightstick:b5,dpup:b13,dpdown:b15,dpleft:b12,dpright:b14,"
+			"leftx:a0,lefty:a1,rightx:a2,righty:a3,",
+			gs, name);
+		SDL_GameControllerAddMapping(mapping);
+	}
+	find_controller();
+	if (!controller && SDL_NumJoysticks() > 0)
+		joystick = SDL_JoystickOpen(0);
 }
 
 static enum input_event_type input_event_from_keycode(SDL_Keycode k)
@@ -275,6 +305,14 @@ static void controller_update_analog(void)
 		stick_y = clamp(-1.0f, 1.0f, stick_y + this_y);
 	}
 
+	if (fabsf(stick_x) > 0.01f || fabsf(stick_y) > 0.01f)
+		cursor_last_activity = SDL_GetTicks();
+
+#ifdef __SWITCH__
+	// Switch: 直接推进游戏坐标系里的光标, 不经过 SDL 鼠标 Warp。
+	cursor_move_stick(stick_x * config.controller.cursor_speed,
+			stick_y * config.controller.cursor_speed);
+#else
 	// get current cursor position
 	int mouse_ix, mouse_iy;
 	float mouse_fx, mouse_fy;
@@ -293,6 +331,7 @@ static void controller_update_analog(void)
 
 	if (mouse_ix != move_ix || mouse_iy != move_iy)
 		SDL_WarpMouseInWindow(gfx.window, move_ix, move_iy);
+#endif
 }
 
 void handle_window_event(struct SDL_WindowEvent *e)
@@ -319,6 +358,88 @@ static bool active_controller(int which)
 {
 	return controller && which == SDL_JoystickInstanceID(
 			SDL_GameControllerGetJoystick(controller));
+}
+
+// ===== Switch 手柄 fallback: 直接读 SDL_Joystick =====
+static enum input_event_type joystick_button_to_event(int b)
+{
+	switch (b) {
+	case 0:  return INPUT_ACTIVATE;   // A
+	case 1:  return INPUT_CANCEL;     // B
+	case 2:  return INPUT_CTRL;       // X
+	case 3:  return INPUT_SPACE;      // Y
+	case 6:  return INPUT_PAGE_UP;    // L
+	case 7:  return INPUT_PAGE_DOWN;  // R
+	case 10: return INPUT_SPACE;      // + (菜单)
+	case 12: return INPUT_LEFT;       // 方向左
+	case 13: return INPUT_UP;         // 方向上
+	case 14: return INPUT_RIGHT;      // 方向右
+	case 15: return INPUT_DOWN;       // 方向下
+	default: return INPUT_NONE;
+	}
+}
+
+static void joystick_button_event(SDL_JoyButtonEvent *ev)
+{
+	bool down = ev->type == SDL_JOYBUTTONDOWN;
+	enum input_event_type type = joystick_button_to_event(ev->button);
+	if (type == INPUT_NONE)
+		return;
+	key_down[type] = down;
+	if (down)
+		key_down_timestamp[type] = SDL_GetTicks();
+}
+
+static float joystick_get_axis(int axis)
+{
+	int i = SDL_JoystickGetAxis(joystick, axis);
+	float f = clamp(-1.0f, 1.0f, i / 32700.0f);
+	if (f > -config.controller.dead_zone && f < config.controller.dead_zone)
+		f = 0.0f;
+	return f;
+}
+
+static void joystick_update_analog(void)
+{
+	if (!config.controller.enabled || !joystick)
+		return;
+	if (!vm_timer_tick_async(&joystick_poll_timer, 33))
+		return;
+
+	float stick_x = 0.0f, stick_y = 0.0f;
+	if (config.controller.left_stick == CONFIG_STICK_CURSOR) {
+		stick_x = joystick_get_axis(0);  // 左摇杆 X
+		stick_y = joystick_get_axis(1);  // 左摇杆 Y
+	}
+	// 右摇杆也计入光标活动(隐藏判定用)
+	float rsx = joystick_get_axis(2);
+	float rsy = joystick_get_axis(3);
+	if (fabsf(stick_x) > 0.01f || fabsf(stick_y) > 0.01f
+			|| fabsf(rsx) > 0.01f || fabsf(rsy) > 0.01f)
+		cursor_last_activity = SDL_GetTicks();
+
+#ifdef __SWITCH__
+	// Switch: 直接推进游戏坐标系里的光标, 不经过 SDL 鼠标 Warp。
+	cursor_move_stick(stick_x * config.controller.cursor_speed,
+			stick_y * config.controller.cursor_speed);
+#else
+	int mouse_ix, mouse_iy;
+	float mouse_fx, mouse_fy;
+	SDL_GetMouseState(&mouse_ix, &mouse_iy);
+	SDL_RenderWindowToLogical(gfx.renderer, mouse_ix, mouse_iy, &mouse_fx, &mouse_fy);
+	mouse_fx = clamp(0.0f, (float)gfx_view.w, mouse_fx);
+	mouse_fy = clamp(0.0f, (float)gfx_view.h, mouse_fy);
+
+	float move_fx = clamp(0.0f, (float)gfx_view.w,
+			mouse_fx + stick_x * config.controller.cursor_speed);
+	float move_fy = clamp(0.0f, (float)gfx_view.h,
+			mouse_fy + stick_y * config.controller.cursor_speed);
+	int move_ix, move_iy;
+	SDL_RenderLogicalToWindow(gfx.renderer, move_fx, move_fy, &move_ix, &move_iy);
+
+	if (mouse_ix != move_ix || mouse_iy != move_iy)
+		SDL_WarpMouseInWindow(gfx.window, move_ix, move_iy);
+#endif
 }
 
 void handle_events(void)
@@ -381,6 +502,11 @@ void handle_events(void)
 			if (active_controller(e.cdevice.which))
 				controller_button_event(&e.cbutton);
 			break;
+		case SDL_JOYBUTTONDOWN:
+		case SDL_JOYBUTTONUP:
+			if (joystick && e.jbutton.which == SDL_JoystickInstanceID(joystick))
+				joystick_button_event(&e.jbutton);
+			break;
 		default:
 			if (e.type == cursor_swap_event)
 				cursor_swap();
@@ -388,6 +514,7 @@ void handle_events(void)
 		}
 	}
 	controller_update_analog();
+	joystick_update_analog();
 }
 
 void vm_delay(int ms)

@@ -224,3 +224,31 @@ Alternatively, run AI5-SDL2 from within the game directory,
 
     cd /path/to/game_directory
     ai5
+
+Switch port (SWITCH branch)
+---------------------------
+
+This branch contains a Nintendo Switch (HOS / Atmosphère / hbmenu) port of
+the AI5-SDL2 engine, adapted for the **Shuusaku (臭作) Chinese-localized
+version only** (汉化版). Only Shuusaku was tested and adapted; other
+supported games (YU-NO, Doukyuusei, Isaku, etc.) are not adapted for Switch.
+
+* Build target: aarch64 (horizon), devkitPro toolchain, cross-compiled with
+  meson (`switch-cross.txt`).
+* Game data is read from `/switch/syuusaku/` on the SD card.
+* Rendering: 960x720 centered in a 1280x720 window, drawn software cursor.
+* Input: left stick drives the in-game cursor, A = click, B = cancel/right
+  click, X = Ctrl, Y = Space, L/R toggle the schedule/status windows,
+  D-pad navigates menus.
+* `subprojects/libai5` is vendored into this branch with Switch fixes
+  (mmap stub, dirname/basename replacements).
+
+**Fonts are NOT included in this branch** (file size). The Chinese build
+embeds a CJK-capable `fonts/Kosugi-Regular.ttf` (full-CJK build) plus Noto
+Sans SC for Chinese (GBK) text. To reproduce it, provide your own font
+files before building: drop a CJK-capable font into `fonts/` (e.g. replace
+`fonts/Kosugi-Regular.ttf` with a full-CJK build, or add Noto Sans SC), and
+build with `embed_fonts` (horizon target forces it). The stock upstream
+fonts do not cover all CJK glyphs needed by the Chinese-localized Shuusaku.
+
+Adapted using DeepSeek HARNESS.

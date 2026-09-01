@@ -54,6 +54,7 @@ void map_controller_button(int btn, enum input_event_type e);
 void map_controller_button_implicitly(int btn, enum input_event_type e);
 
 extern uint32_t cursor_swap_event;
+uint32_t input_cursor_last_activity(void);
 
 struct SDL_WindowEvent;
 void handle_window_event(struct SDL_WindowEvent *e);
