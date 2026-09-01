@@ -1,0 +1,8 @@
+--- a/compat.c
++++ b/compat.c
+@@ -1,3 +1,5 @@
++#define NO_CATCHSIGNAL 1
++#define DONT_CATCH_SIGNALS 1
+ /*
+ 	compat: Some compatibility functions (basic memory & string stuff in separate file)
+ 

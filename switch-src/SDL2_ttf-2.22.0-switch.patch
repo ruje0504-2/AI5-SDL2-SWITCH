@@ -1,0 +1,56 @@
+--- a/SDL_ttf.c
++++ b/SDL_ttf.c
+@@ -35,11 +35,8 @@
+ 
+ /* Enable rendering with color
+  * Freetype may need to be compiled with FT_CONFIG_OPTION_USE_PNG */
+-#if defined(FT_HAS_COLOR)
+-#  define TTF_USE_COLOR 1
+-#else
+-#  define TTF_USE_COLOR 0
+-#endif
++/* Switch (aarch64): FT_LOAD_COLOR produces empty glyphs for outline fonts; disable */
++#define TTF_USE_COLOR 0
+ 
+ /* Enable Signed Distance Field rendering (requires latest FreeType version) */
+ #if defined(FT_RASTER_FLAG_SDF)
+@@ -124,7 +121,8 @@
+ #endif
+ 
+ /* Round glyph width to 8 bytes */
+-#define HAVE_BLIT_GLYPH_64
++/* Switch (aarch64): the aligned blit path writes empty alpha; use the portable path */
++/* #define HAVE_BLIT_GLYPH_64 */
+ 
+ /* Android armeabi-v7a doesn't like int64 (Maybe all other __ARM_ARCH < 7 ?),
+  * un-activate it, especially if NEON isn't detected */
+@@ -137,7 +135,7 @@
+ #endif
+ 
+ /* Default: round glyph width to 4 bytes to copy them faster */
+-#define HAVE_BLIT_GLYPH_32
++/* #define HAVE_BLIT_GLYPH_32 */
+ 
+ /* Use Duff's device to unroll loops */
+ //#define USE_DUFFS_LOOP
+@@ -1782,6 +1780,9 @@
+     }
+ 
+     /* Check to make sure we can seek in this stream */
++    /* Switch: shared SDL_RWops may be left at a non-zero position by a
++     * previous font; rewind so stream->size covers the whole font. */
++    SDL_RWseek(src, 0, RW_SEEK_SET);
+     position = SDL_RWtell(src);
+     if (position < 0) {
+         TTF_SetError("Can't seek in stream");
+
+--- a/Makefile.in
++++ b/Makefile.in
+@@ -93,7 +93,6 @@
+ host_triplet = @host@
+ @USE_VERSION_RC_FALSE@libSDL2_ttf_la_DEPENDENCIES =  \
+ @USE_VERSION_RC_FALSE@	$(am__DEPENDENCIES_1)
+-noinst_PROGRAMS = showfont$(EXEEXT) glfont$(EXEEXT)
+ subdir = .
+ ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
+ am__aclocal_m4_deps =  \
