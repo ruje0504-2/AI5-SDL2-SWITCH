@@ -251,4 +251,32 @@ files before building: drop a CJK-capable font into `fonts/` (e.g. replace
 build with `embed_fonts` (horizon target forces it). The stock upstream
 fonts do not cover all CJK glyphs needed by the Chinese-localized Shuusaku.
 
+### Building for Switch
+
+Prerequisites: devkitPro (`devkitA64` + libnx) and a portlibs prefix with
+these libraries cross-compiled for aarch64 (horizon): zlib, libpng,
+freetype, libsndfile, mesa, SDL2, harfbuzz, SDL2_ttf.
+
+1. Set up the cross environment, then point the cross file at your portlibs
+   prefix (the one printed by `switch-env.sh`):
+
+       source switch-env.sh
+       sed -i '' "s|/path/to/switch-portlibs|$PORTLIBS_PREFIX|g" switch-cross.txt
+
+2. Configure and build:
+
+       meson setup build --cross-file switch-cross.txt
+       ninja -C build
+
+3. Package the NRO (name `syuusaku`, author `elf`):
+
+       aarch64-none-elf-strip build/ai5 -o build/ai5.strip
+       nacptool --create "syuusaku" "elf" "1.0.0" build/syuusaku.nacp
+       elf2nro build/ai5.strip syuusaku.nro \
+         --nacp=build/syuusaku.nacp --icon=build/icon_256.jpg
+
+4. Deploy: copy `syuusaku.nro` to `SD:/switch/syuusaku.nro` and the game
+   data to `SD:/switch/syuusaku/`. Hold R while launching any game to enter
+   hbmenu (full-memory mode) and run `syuusaku`.
+
 Adapted using DeepSeek HARNESS.

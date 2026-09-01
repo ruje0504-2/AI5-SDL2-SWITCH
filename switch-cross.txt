@@ -1,0 +1,32 @@
+# Meson cross file for building ai5-sdl2 for Nintendo Switch (aarch64 / horizon).
+# NOTE: replace every /path/to/switch-portlibs below with your local portlibs
+# prefix (the one printed by `source switch-env.sh`), e.g.:
+#   sed -i '' "s|/path/to/switch-portlibs|$PORTLIBS_PREFIX|g" switch-cross.txt
+
+[binaries]
+c = '/opt/devkitpro/devkitA64/bin/aarch64-none-elf-gcc'
+cpp = '/opt/devkitpro/devkitA64/bin/aarch64-none-elf-g++'
+ar = '/opt/devkitpro/devkitA64/bin/aarch64-none-elf-gcc-ar'
+strip = '/opt/devkitpro/devkitA64/bin/aarch64-none-elf-strip'
+pkg-config = '/opt/devkitpro/tools/bin/pkg-config'
+
+[built-in options]
+c_args = ['-D__SWITCH__', '-I/opt/devkitpro/libnx/include', '-I/path/to/switch-portlibs/include', '-g', '-O2', '-ffunction-sections', '-fdata-sections', '-march=armv8-a+crc+crypto', '-mtune=cortex-a57', '-mtp=soft', '-fPIC', '-ftls-model=local-exec']
+c_link_args = ['-specs=/opt/devkitpro/libnx/switch.specs', '-g', '-march=armv8-a+crc+crypto', '-mtune=cortex-a57', '-mtp=soft', '-fPIC', '-ftls-model=local-exec', '-L/opt/devkitpro/libnx/lib', '-L/path/to/switch-portlibs/lib', '-lnx']
+cpp_args = ['-D__SWITCH__', '-I/opt/devkitpro/libnx/include', '-I/path/to/switch-portlibs/include', '-g', '-O2', '-ffunction-sections', '-fdata-sections', '-march=armv8-a+crc+crypto', '-mtune=cortex-a57', '-mtp=soft', '-fPIC', '-ftls-model=local-exec', '-fno-rtti', '-fno-exceptions']
+cpp_link_args = ['-specs=/opt/devkitpro/libnx/switch.specs', '-g', '-march=armv8-a+crc+crypto', '-mtune=cortex-a57', '-mtp=soft', '-fPIC', '-ftls-model=local-exec', '-L/opt/devkitpro/libnx/lib', '-L/path/to/switch-portlibs/lib', '-lnx']
+
+[host_machine]
+system = 'horizon'
+cpu_family = 'aarch64'
+cpu = 'cortex-a57'
+endian = 'little'
+
+[target_machine]
+system = 'horizon'
+cpu_family = 'aarch64'
+cpu = 'cortex-a57'
+endian = 'little'
+
+[properties]
+pkg_config_libdir = '/path/to/switch-portlibs/lib/pkgconfig'
