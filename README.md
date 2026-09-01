@@ -253,6 +253,11 @@ fonts do not cover all CJK glyphs needed by the Chinese-localized Shuusaku.
 
 ### Building for Switch
 
+**This port was cross-compiled on macOS** (Apple Silicon, devkitPro
+`devkitA64` + libnx); the commands below assume a macOS host (BSD `sed
+-i ''`, `/opt/homebrew` in `switch-env.sh`). On Linux, adjust `sed -i ''`
+to `sed -i` and the toolchain paths accordingly.
+
 Prerequisites: devkitPro (`devkitA64` + libnx) and a portlibs prefix with
 these libraries cross-compiled for aarch64 (horizon): zlib, libpng,
 freetype, libsndfile, mesa, SDL2, harfbuzz, SDL2_ttf.

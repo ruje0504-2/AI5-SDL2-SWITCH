@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Cross-compilation environment for building ai5-sdl2 for Nintendo Switch.
+# Tested on macOS (Apple Silicon) with devkitPro devkitA64.
 # Installs the cross-compiled portlibs into a workspace prefix
 # (switch-portlibs/) instead of writing into /opt/devkitpro.
 # Usage: source switch-env.sh
