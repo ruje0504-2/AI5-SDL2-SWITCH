@@ -15,8 +15,14 @@ export PORTLIBS_PREFIX="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/switch-por
 export PORTLIBS_PATH="$(dirname "$PORTLIBS_PREFIX")"
 export PORTLIBS="$PORTLIBS_PREFIX"
 
-export PKG_CONFIG_PATH="$PORTLIBS_PREFIX/lib/pkgconfig"
-export PKG_CONFIG_LIBDIR="$PORTLIBS_PREFIX/lib/pkgconfig"
+export PKG_CONFIG_PATH="$PORTLIBS_PREFIX/lib/pkgconfig:/opt/devkitpro/portlibs/switch/lib/pkgconfig"
+# NOTE: do NOT restrict pkg-config to the workspace prefix alone (e.g. by
+# setting PKG_CONFIG_LIBDIR to it). devkitPro's switch portlibs provide most
+# of the required .pc files (sdl2.pc, freetype2.pc, ...); the workspace
+# prefix only adds the libraries devkitPro does not ship (SDL2_ttf, sndfile,
+# mpg123, lame). Both directories must be searchable or configure/meson
+# steps fail with "dependency not found" / missing headers.
+unset PKG_CONFIG_LIBDIR
 export PYTHONPATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/python-pkgs:${PYTHONPATH:-}"
 
 # Codegen flags matching devkitPro's official values (libraries use -fPIC;
@@ -24,7 +30,7 @@ export PYTHONPATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/python-pkgs:${P
 export ARCH="-march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIC -ftls-model=local-exec"
 export CFLAGS="-g -O2 -ffunction-sections -fdata-sections $ARCH"
 export CXXFLAGS="$CFLAGS -fno-rtti -fno-exceptions"
-export CPPFLAGS="-D__SWITCH__ -I$DEVKITPRO/libnx/include -I$PORTLIBS_PREFIX/include"
+export CPPFLAGS="-D__SWITCH__ -I$DEVKITPRO/libnx/include -I$DEVKITPRO/portlibs/switch/include -I$PORTLIBS_PREFIX/include"
 export LDFLAGS="-specs=$DEVKITPRO/libnx/switch.specs -g $ARCH -L$DEVKITPRO/libnx/lib -L$PORTLIBS_PREFIX/lib"
 export LIBS="-lnx"
 

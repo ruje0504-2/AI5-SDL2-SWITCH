@@ -2,7 +2,6 @@
 # NOTE: replace every /path/to/switch-portlibs below with your local portlibs
 # prefix (the one printed by `source switch-env.sh`), e.g.:
 #   sed -i '' "s|/path/to/switch-portlibs|$PORTLIBS_PREFIX|g" switch-cross.txt
-
 [binaries]
 c = '/opt/devkitpro/devkitA64/bin/aarch64-none-elf-gcc'
 cpp = '/opt/devkitpro/devkitA64/bin/aarch64-none-elf-g++'
@@ -29,4 +28,8 @@ cpu = 'cortex-a57'
 endian = 'little'
 
 [properties]
-pkg_config_libdir = '/path/to/switch-portlibs/lib/pkgconfig'
+# pkg-config search path used by meson. It must cover BOTH the workspace
+# prefix (SDL2_ttf/sndfile/mpg123/lame) and devkitPro's switch portlibs
+# (sdl2/freetype2/etc.); restricting it to only one directory makes the
+# meson configure step fail ("dependency sdl2 not found" etc.).
+pkg_config_libdir = '/path/to/switch-portlibs/lib/pkgconfig:/opt/devkitpro/portlibs/switch/lib/pkgconfig'

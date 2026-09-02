@@ -262,10 +262,18 @@ to `sed -i` and the toolchain paths accordingly.
 
 Prerequisites: devkitPro (`devkitA64` + libnx) and a portlibs prefix with
 these libraries cross-compiled for aarch64 (horizon): zlib, libpng,
-freetype, libsndfile, mesa, SDL2, harfbuzz, SDL2_ttf.
+freetype, libsndfile (with MPEG), mesa, SDL2, harfbuzz, SDL2_ttf.
+
+devkitPro's switch portlibs already provide zlib/libpng/freetype/mesa/SDL2/
+harfbuzz, but **not SDL2_ttf or libsndfile** — build those two (plus
+mpg123/lame) yourself; see `switch-src/README.md` → "Building the libraries
+devkitPro does not ship" for the exact commands and every pitfall
+(MP3-under-.wav names, C23 ALAC issue, ffmpeg auto-enable, fonts, ...).
+Read that section before your first build.
 
 1. Set up the cross environment, then point the cross file at your portlibs
-   prefix (the one printed by `switch-env.sh`):
+   prefix (the one printed by `switch-env.sh`). Note the cross file's
+   pkg-config path must keep devkitPro's portlibs visible too:
 
        source switch-env.sh
        sed -i '' "s|/path/to/switch-portlibs|$PORTLIBS_PREFIX|g" switch-cross.txt
