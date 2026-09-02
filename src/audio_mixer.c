@@ -493,6 +493,16 @@ static SF_VIRTUAL_IO mixer_stream_vio = {
 	.tell = mixer_stream_vio_tell
 };
 
+/*
+ * NOTE (Shuusaku / 臭作 Switch port): the audio entries stored inside the
+ * game's .awd archives (voice.awd, bgm.awd, se.awd) are NAMED "*.wav", but
+ * the actual data is MP3 (MPEG audio layer III). libsndfile is what decodes
+ * them here, so libsndfile MUST be built with MPEG support (libmpg123 +
+ * lame present at configure time -- "External MPEG Lame/MPG123: yes").
+ * A libsndfile built without MPEG makes sf_open_virtual() fail for every
+ * voice/BGM stream, and the game silently ships with no audio. See
+ * switch-src/README.md in the repository for the build notes.
+ */
 struct mixer_stream *mixer_stream_open(struct archive_data *dfile, enum mix_channel mixer)
 {
 	struct mixer_stream *ch = xcalloc(1, sizeof(struct mixer_stream));
