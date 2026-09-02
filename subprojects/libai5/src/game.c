@@ -19,6 +19,7 @@
 #include "ai5/anim.h"
 #include "ai5/game.h"
 #include "ai5/mes.h"
+#include "nulib/utfsjis.h"
 
 enum ai5_game_id ai5_target_game = -1;
 
@@ -62,4 +63,42 @@ void ai5_set_game(const char *name)
 	ai5_target_game = ai5_parse_game_id(name);
 	mes_set_game(ai5_target_game);
 	anim_set_game(ai5_target_game);
+}
+
+/*
+ * Text encoding of the loaded game data. SJIS (upstream default) unless the
+ * application selects GBK for Chinese-localized data (e.g. Shuusaku's
+ * MSG2CHS.ARC).
+ */
+static enum ai5_text_encoding text_encoding = AI5_TEXT_ENCODING_SJIS;
+
+void ai5_set_text_encoding(enum ai5_text_encoding enc)
+{
+	text_encoding = enc;
+}
+
+enum ai5_text_encoding ai5_text_encoding(void)
+{
+	return text_encoding;
+}
+
+bool ai5_char_is_2byte(uint8_t b)
+{
+	if (text_encoding == AI5_TEXT_ENCODING_GBK)
+		return GBK_2BYTE(b);
+	return SJIS_2BYTE(b);
+}
+
+char *ai5_text_char2unicode(const char *src, int *dst)
+{
+	if (text_encoding == AI5_TEXT_ENCODING_GBK)
+		return gbk_char2unicode(src, dst);
+	return sjis_char2unicode(src, dst);
+}
+
+string ai5_text_cstring_to_utf8(const char *src, size_t len)
+{
+	if (text_encoding == AI5_TEXT_ENCODING_GBK)
+		return gbk_cstring_to_utf8(src, len);
+	return sjis_cstring_to_utf8(src, len);
 }

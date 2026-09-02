@@ -226,7 +226,7 @@ static bool mes_parse_string_param(struct buffer *mes, struct mes_parameter *par
 		default:
 			// TODO: \x
 			str[str_i] = c;
-			if (SJIS_2BYTE(c)) {
+			if (ai5_char_is_2byte(c)) {
 				if (!(c = buffer_read_u8(mes))) {
 					DC_WARNING(mes->index, "string parameter truncated");
 					mes->index--;
@@ -238,7 +238,7 @@ static bool mes_parse_string_param(struct buffer *mes, struct mes_parameter *par
 		}
 	}
 	str[str_i] = '\0';
-	param->str = gbk_cstring_to_utf8(str, str_i);
+	param->str = ai5_text_cstring_to_utf8(str, str_i);
 	return true;
 }
 
@@ -281,12 +281,16 @@ static bool in_range(int v, int low, int high)
 
 bool mes_char_is_hankaku(uint8_t b)
 {
-	return !in_range(b, 0x81, 0xfe);
+	if (ai5_text_encoding() == AI5_TEXT_ENCODING_GBK)
+		return !in_range(b, 0x81, 0xfe);
+	return !in_range(b, 0x81, 0x9f) && !in_range(b, 0xe0, 0xef);
 }
 
 bool mes_char_is_zenkaku(uint8_t b)
 {
-	return in_range(b, 0x81, 0xfe);
+	if (ai5_text_encoding() == AI5_TEXT_ENCODING_GBK)
+		return in_range(b, 0x81, 0xfe);
+	return in_range(b, 0x81, 0x9f) || in_range(b, 0xe0, 0xef) || in_range(b, 0xfa, 0xfc);
 }
 
 #define TXT_BUF_SIZE 4096
@@ -321,7 +325,7 @@ static string mes_parse_txt(struct buffer *mes, bool *terminated)
 	*terminated = true;
 unterminated:
 	str[str_i] = 0;
-	return gbk_cstring_to_utf8(str, str_i);
+	return ai5_text_cstring_to_utf8(str, str_i);
 }
 
 static string mes_parse_str(struct buffer *mes, bool *terminated)
@@ -371,7 +375,7 @@ static string mes_parse_str(struct buffer *mes, bool *terminated)
 	*terminated = true;
 unterminated:
 	str[str_i] = 0;
-	return gbk_cstring_to_utf8(str, str_i);
+	return ai5_text_cstring_to_utf8(str, str_i);
 }
 
 static struct mes_statement *_mes_parse_statement(struct buffer *mes)

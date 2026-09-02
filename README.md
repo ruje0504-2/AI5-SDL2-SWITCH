@@ -230,10 +230,10 @@ Switch port
 
 This repository — **AI5-SDL2-SWITCH** — is a fork of
 [AI5-SDL2](https://github.com/nunuhara/ai5-sdl2) carrying a Nintendo Switch
-(HOS / Atmosphère / hbmenu) port of the AI5-SDL2 engine, adapted for the
-**Shuusaku (臭作) Chinese-localized version only** (汉化版). Only Shuusaku
-was tested and adapted; other supported games (YU-NO, Doukyuusei, Isaku,
-etc.) are not adapted for Switch.
+(HOS / Atmosphère / hbmenu) port of the AI5-SDL2 engine for
+**Shuusaku (臭作)**, supporting both the original Japanese version and the
+Chinese-localized (汉化) version. Only Shuusaku is adapted for Switch;
+other supported games (YU-NO, Doukyuusei, Isaku, etc.) are not.
 
 * Build target: aarch64 (horizon), devkitPro toolchain, cross-compiled with
   meson (`switch-cross.txt`).

@@ -38,6 +38,12 @@ enum config_stick_behavior {
 	CONFIG_STICK_DPAD,
 };
 
+enum config_text_encoding {
+	TEXT_ENCODING_AUTO = -1,
+	TEXT_ENCODING_SJIS = 0,
+	TEXT_ENCODING_GBK = 1,
+};
+
 struct config {
 	// [CONFIG]
 	string title;
@@ -123,6 +129,12 @@ struct config {
 		enum config_stick_behavior right_stick;
 		bool ui;
 	} controller;
+
+	// Text encoding of the loaded game data. AUTO picks SJIS unless the
+	// configured message archive name marks a Chinese (CHS) data set.
+	// Overridable with [CONFIG] TEXTENCODING = SJIS | GBK in the game INI
+	// or AI5SDL2.INI.
+	enum config_text_encoding text_encoding;
 };
 
 extern struct config config;

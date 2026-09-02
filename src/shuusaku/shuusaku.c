@@ -117,14 +117,14 @@ void shuusaku_draw_text(const char *_text)
 			continue;
 		}
 		int ch;
-		bool zenkaku = GBK_2BYTE(*text);
+		bool zenkaku = ai5_char_is_2byte(*text);
 		uint16_t char_space = zenkaku ? 2 : 1;
 		if (x + char_space > end_x) {
 			x = start_x;
 			y += line_space;
 		}
 
-		text = (const uint8_t*)gbk_char2unicode((const char*)text, &ch);
+		text = (const uint8_t*)ai5_text_char2unicode((const char*)text, &ch);
 		gfx_text_draw_glyph(x * 8, y, surface, ch);
 		x += char_space;
 	}
@@ -1448,8 +1448,8 @@ static void util_credits(struct param_list *params)
 	const char *text_p = (char*)text;
 	while (*text_p) {
 		int ch;
-		unsigned char_space = font_size / (GBK_2BYTE(*text_p) ? 1 : 2);
-		text_p = gbk_char2unicode(text_p, &ch);
+		unsigned char_space = font_size / (ai5_char_is_2byte(*text_p) ? 1 : 2);
+		text_p = ai5_text_char2unicode(text_p, &ch);
 		gfx_text_draw_glyph(x, y, 0, ch);
 		x += char_space;
 	}

@@ -18,6 +18,10 @@
 #define AI5_GAME_H
 
 #include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+
+typedef char *string;
 
 enum ai5_game_id {
 	GAME_KISAKU_ANIM,    // 2011-04-28 release (animated complete edition)
@@ -65,5 +69,29 @@ extern struct ai5_game ai5_games[AI5_NR_GAME_IDS];
 
 enum ai5_game_id ai5_parse_game_id(const char *str);
 void ai5_set_game(const char *name);
+
+/*
+ * Runtime text encoding for the loaded game data.
+ * SJIS is the upstream default (all original Japanese releases);
+ * GBK is used for Chinese-localized (汉化) data such as Shuusaku's
+ * MSG2CHS.ARC. Call ai5_set_text_encoding() before any text is parsed
+ * or drawn.
+ */
+enum ai5_text_encoding {
+	AI5_TEXT_ENCODING_SJIS = 0,
+	AI5_TEXT_ENCODING_GBK = 1,
+};
+
+void ai5_set_text_encoding(enum ai5_text_encoding enc);
+enum ai5_text_encoding ai5_text_encoding(void);
+
+/* True if byte b starts a 2-byte character in the active encoding. */
+bool ai5_char_is_2byte(uint8_t b);
+
+/* Decode one character from src (advances src) to a Unicode codepoint. */
+char *ai5_text_char2unicode(const char *src, int *dst);
+
+/* Convert a raw string of the active encoding to a UTF-8 nulib string. */
+string ai5_text_cstring_to_utf8(const char *src, size_t len);
 
 #endif // AI5_GAME_H

@@ -66,6 +66,7 @@ struct config config = {
 		.left_stick = CONFIG_STICK_CURSOR,
 		.right_stick = CONFIG_STICK_CURSOR,
 	},
+	.text_encoding = TEXT_ENCODING_AUTO,
 };
 bool yuno_eng = false;
 
@@ -107,6 +108,13 @@ static int cfg_handler(void *user, const char *section, const char *name, const 
 		// ignore
 	} else if (MATCH("CONFIG", "bDEBUG")) {
 		// ignore
+	} else if (MATCH("CONFIG", "TEXTENCODING")) {
+		if (!strcasecmp(value, "GBK"))
+			config->text_encoding = TEXT_ENCODING_GBK;
+		else if (!strcasecmp(value, "SJIS"))
+			config->text_encoding = TEXT_ENCODING_SJIS;
+		else
+			WARNING("Invalid text encoding: \"%s\" (expected SJIS or GBK)", value);
 	// [FILE]
 	} else if (MATCH("FILE", "bARCBG")) {
 		config->file.bg.arc = atoi(value);
@@ -723,6 +731,27 @@ int main(int argc, char *argv[])
 	DEFAULT_NAME(config.file.data, "DATA.ARC");
 	DEFAULT_NAME(config.file.priv, "PRIV.ARC");
 #undef DEFAULT_NAME
+
+	// Determine text encoding (SJIS or GBK) for the loaded game data.
+	// An explicit TEXTENCODING option wins; otherwise GBK is selected when
+	// the configured message archive marks a Chinese-localized (CHS) data
+	// set (e.g. Shuusaku's MSG2CHS.ARC), and SJIS otherwise.
+	enum ai5_text_encoding text_encoding = AI5_TEXT_ENCODING_SJIS;
+	if (config.text_encoding == TEXT_ENCODING_GBK) {
+		text_encoding = AI5_TEXT_ENCODING_GBK;
+	} else if (config.text_encoding == TEXT_ENCODING_SJIS) {
+		text_encoding = AI5_TEXT_ENCODING_SJIS;
+	} else if (config.file.mes.name) {
+		for (const char *p = config.file.mes.name; *p; p++) {
+			if ((*p == 'c' || *p == 'C') && (p[1] == 'h' || p[1] == 'H')
+					&& (p[2] == 's' || p[2] == 'S')) {
+				text_encoding = AI5_TEXT_ENCODING_GBK;
+				break;
+			}
+		}
+	}
+	ai5_set_text_encoding(text_encoding);
+	SW_LOG("init: text_encoding=%s", text_encoding == AI5_TEXT_ENCODING_GBK ? "GBK" : "SJIS");
 
 	// intitialize subsystems
 	SW_LOG("init: start");

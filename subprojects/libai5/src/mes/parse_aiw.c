@@ -202,7 +202,7 @@ static bool mes_parse_string_param(struct buffer *mes, struct mes_parameter *par
 		default:
 			// TODO: \x
 			str[str_i] = c;
-			if (SJIS_2BYTE(c)) {
+			if (ai5_char_is_2byte(c)) {
 				if (!(c = buffer_read_u8(mes))) {
 					DC_WARNING(mes->index, "string parameter truncated");
 					mes->index--;
@@ -214,7 +214,7 @@ static bool mes_parse_string_param(struct buffer *mes, struct mes_parameter *par
 		}
 	}
 	str[str_i] = '\0';
-	param->str = gbk_cstring_to_utf8(str, str_i);
+	param->str = ai5_text_cstring_to_utf8(str, str_i);
 	return true;
 }
 
@@ -283,7 +283,7 @@ static string aiw_mes_parse_text(struct buffer *mes)
 		/* nothing */;
 	if (len == rem)
 		return NULL;
-	string s = gbk_cstring_to_utf8((char*)str, len);
+	string s = ai5_text_cstring_to_utf8((char*)str, len);
 	buffer_skip(mes, len + 1);
 	return s;
 }
