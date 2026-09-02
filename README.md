@@ -225,13 +225,15 @@ Alternatively, run AI5-SDL2 from within the game directory,
     cd /path/to/game_directory
     ai5
 
-Switch port (SWITCH branch)
----------------------------
+Switch port
+-----------
 
-This branch contains a Nintendo Switch (HOS / Atmosphère / hbmenu) port of
-the AI5-SDL2 engine, adapted for the **Shuusaku (臭作) Chinese-localized
-version only** (汉化版). Only Shuusaku was tested and adapted; other
-supported games (YU-NO, Doukyuusei, Isaku, etc.) are not adapted for Switch.
+This repository — **AI5-SDL2-SWITCH** — is a fork of
+[AI5-SDL2](https://github.com/nunuhara/ai5-sdl2) carrying a Nintendo Switch
+(HOS / Atmosphère / hbmenu) port of the AI5-SDL2 engine, adapted for the
+**Shuusaku (臭作) Chinese-localized version only** (汉化版). Only Shuusaku
+was tested and adapted; other supported games (YU-NO, Doukyuusei, Isaku,
+etc.) are not adapted for Switch.
 
 * Build target: aarch64 (horizon), devkitPro toolchain, cross-compiled with
   meson (`switch-cross.txt`).
@@ -240,10 +242,10 @@ supported games (YU-NO, Doukyuusei, Isaku, etc.) are not adapted for Switch.
 * Input: left stick drives the in-game cursor, A = click, B = cancel/right
   click, X = Ctrl, Y = Space, L/R toggle the schedule/status windows,
   D-pad navigates menus.
-* `subprojects/libai5` is vendored into this branch with Switch fixes
+* `subprojects/libai5` is vendored into this repository with Switch fixes
   (mmap stub, dirname/basename replacements).
 
-**Fonts are NOT included in this branch** (file size). The Chinese build
+**Fonts are NOT included in this repository** (file size). The Chinese build
 embeds a CJK-capable `fonts/Kosugi-Regular.ttf` (full-CJK build) plus Noto
 Sans SC for Chinese (GBK) text. To reproduce it, provide your own font
 files before building: drop a CJK-capable font into `fonts/` (e.g. replace
