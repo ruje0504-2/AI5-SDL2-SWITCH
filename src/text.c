@@ -229,10 +229,14 @@ static struct font *font_insert(int size, TTF_Font *id, TTF_Font *id_outline)
 #endif
 	int min_x, max_x, min_y, max_y, adv;
 	int ascent = TTF_FontAscent(id);
+#ifdef __SWITCH__
 	if (TTF_GlyphMetrics32(id, 'A', &min_x, &max_x, &min_y, &max_y, &adv) != 0 || max_y <= 0) {
 		// Switch freetype returns bogus vertical metrics; approximate cap height.
 		max_y = size * 11 / 16;
 	}
+#else
+	TTF_GlyphMetrics32(id, 'A', &min_x, &max_x, &min_y, &max_y, &adv);
+#endif
 
 	// Calculate the y-offset for the font. This is a bit hacky, but it
 	// works reasonably well for most fonts.
@@ -393,17 +397,28 @@ static void glyph_blit_indexed(SDL_Surface *glyph, int dst_x, int dst_y, SDL_Sur
 	if (SDL_MUSTLOCK(s))
 		SDL_CALL(SDL_LockSurface, s);
 
-	// Glyph surface is 32-bit ARGB8888 (blended); alpha byte is at offset 3 on
-	// little-endian. Threshold alpha to build the 1-bit mask for the 8bpp dst.
+	// The Switch path renders glyphs as 32-bit ARGB8888 (blended), so alpha
+	// is at byte offset 3 and is thresholded to build the 1-bit mask for the
+	// 8bpp destination. On other platforms glyphs are 1-byte palette pixels
+	// (Solid), matched by the upstream "!= 0" test below.
+#ifdef __SWITCH__
 	const int glyph_bpp = glyph->format->BytesPerPixel;
 	const int a_off = glyph_bpp == 4 ? 3 : 0;
 	uint8_t *src_base = glyph->pixels + glyph_y * glyph->pitch + glyph_x * glyph_bpp;
+#else
+	uint8_t *src_base = glyph->pixels + glyph_y * glyph->pitch + glyph_x;
+#endif
 	uint8_t *dst_base = s->pixels + dst_y * s->pitch + dst_x;
 	for (int row = 0; row < glyph_h; row++) {
 		uint8_t *src_p = src_base + row * glyph->pitch;
 		uint8_t *dst_p = dst_base + row * s->pitch;
+#ifdef __SWITCH__
 		for (int col = 0; col < glyph_w; col++, dst_p++, src_p += glyph_bpp) {
 			if (src_p[a_off] >= 128) {
+#else
+		for (int col = 0; col < glyph_w; col++, dst_p++, src_p++) {
+			if (*src_p != 0) {
+#endif
 				*dst_p = gfx.text.fg;
 				if (text_shadow == TEXT_SHADOW_A) {
 					dst_p[1] = gfx.text.bg;
@@ -427,6 +442,7 @@ static unsigned gfx_text_draw_glyph_indexed(SDL_Surface *dst, int x, int y, uint
 {
 	assert(gfx.text.fg < dst->format->palette->ncolors);
 	SDL_Color fg = dst->format->palette->colors[gfx.text.fg];
+#ifdef __SWITCH__
 	// Switch freetype's mono (FT_RENDER_MODE_MONO) rasterizer produces empty
 	// bitmaps; use grayscale (blended) rendering and threshold the alpha.
 	SDL_Surface *s = TTF_RenderGlyph32_Blended(cur_font->id, ch, fg);
@@ -453,6 +469,11 @@ static unsigned gfx_text_draw_glyph_indexed(SDL_Surface *dst, int x, int y, uint
 				p0[0],p0[1],p0[2],p0[3], p0[4],p0[5],p0[6],p0[7], p0[8],p0[9],p0[10],p0[11]);
 		}
 	}
+#else
+	SDL_Surface *s = TTF_RenderGlyph32_Solid(cur_font->id, ch, fg);
+	if (!s)
+		ERROR("TTF_RenderGlyph32_Solid: %s", TTF_GetError());
+#endif
 
 	y -= cur_font->y_off;
 	unsigned w = s->w;
@@ -548,12 +569,16 @@ void ui_draw_text(SDL_Surface *s, int x, int y, const char *text, SDL_Color colo
 	if (!ui_font && !ui_font_init()) {
 		return;
 	}
+#ifdef __SWITCH__
 	// Switch: mono (Solid) rasterizer renders empty; use grayscale (Blended)
 	SDL_Surface *text_s = TTF_RenderUTF8_Blended(ui_font, text, color);
 	if (!text_s)
 		return;
-	SDL_Rect text_r = { x, y - (TTF_FontAscent(ui_font) - ui_ascent) - ui_ascent / 2, text_s->w, text_s->h };
 	SDL_SetSurfaceBlendMode(text_s, SDL_BLENDMODE_BLEND);
+#else
+	SDL_Surface *text_s = TTF_RenderUTF8_Solid(ui_font, text, color);
+#endif
+	SDL_Rect text_r = { x, y - (TTF_FontAscent(ui_font) - ui_ascent) - ui_ascent / 2, text_s->w, text_s->h };
 	SDL_CALL(SDL_BlitSurface, text_s, NULL, s, &text_r);
 	SDL_FreeSurface(text_s);
 }
@@ -591,7 +616,12 @@ void gfx_text_set_size(int size, int weight)
 	if (!font) {
 		TTF_Font *f;
 		TTF_Font *f_outline = NULL;
+#ifdef __SWITCH__
+		// The Switch ships a single embedded font; do not pick FONT_SMALL.
 		enum font_type type = yuno_eng ? FONT_ENG : FONT_LARGE;
+#else
+		enum font_type type = yuno_eng ? FONT_ENG : (size <= 18 ? FONT_SMALL : FONT_LARGE);
+#endif
 		open_font(&font_spec[type], size, &f, &f_outline);
 		font = font_insert(size, f, f_outline);
 	}
