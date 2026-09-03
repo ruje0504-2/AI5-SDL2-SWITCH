@@ -100,7 +100,9 @@ struct sched_cam_event *shuusaku_get_cam_event(enum sched_location loc, unsigned
 
 // schedule.c
 void schedule_window_init(void);
+#ifdef __SWITCH__
 void schedule_window_present(void);
+#endif
 void shuusaku_schedule_window_toggle(void);
 bool shuusaku_schedule_window_event(SDL_Event *e);
 void shuusaku_schedule_tick(void);
@@ -112,7 +114,9 @@ int shuusaku_absolute_time(unsigned day, unsigned t);
 bool shuusaku_subwindow_valid(void);
 
 // status.c
+#ifdef __SWITCH__
 void status_window_present(void);
+#endif
 void shuusaku_status_init(void);
 void shuusaku_status_window_toggle(void);
 bool shuusaku_status_window_event(SDL_Event *e);

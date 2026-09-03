@@ -101,11 +101,15 @@ static void unprefixed_error(void)
  * Draw the per-frame overlays specific to Shuusaku (schedule/status windows)
  * on top of the rendered game frame.  Registered as game->overlay_present so
  * the generic gfx_update() never has to know about game-specific windows.
+ * Only meaningful on Switch (single window): on other platforms these
+ * windows are presented through their own SDL windows, not via gfx_update().
  */
 void shuusaku_overlay_present(void)
 {
+#ifdef __SWITCH__
 	schedule_window_present();
 	status_window_present();
+#endif
 }
 
 void shuusaku_draw_text(const char *_text)
@@ -1692,6 +1696,7 @@ static bool shuusaku_handle_event(SDL_Event *e)
 			return true;
 		}
 		break;
+#ifdef __SWITCH__
 	case SDL_JOYBUTTONDOWN:
 		// Switch: L toggles schedule, R toggles status.
 		switch (e->jbutton.button) {
@@ -1703,6 +1708,7 @@ static bool shuusaku_handle_event(SDL_Event *e)
 			return true;
 		}
 		break;
+#endif
 	}
 
 	return false;

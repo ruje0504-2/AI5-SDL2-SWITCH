@@ -326,11 +326,24 @@ void schedule_window_draw(void)
 
 void schedule_window_init(void)
 {
-	// Switch single-window mode: reuse the main window/renderer; the
-	// schedule table is drawn as an overlay on top
+#ifdef __SWITCH__
+	// Single-window mode: reuse the main window/renderer; the schedule
+	// table is drawn as an overlay on top of the main frame.
 	schedule.window = gfx.window;
 	schedule.renderer = gfx.renderer;
 	schedule.window_id = SDL_GetWindowID(gfx.window);
+#else
+	int x, y;
+	SDL_GetWindowPosition(gfx.window, &x, &y);
+	SDL_CTOR(SDL_CreateWindow, schedule.window, "スケジュール表",
+			x, y, SCHEDULE_WINDOW_W, SCHEDULE_WINDOW_H,
+			SDL_WINDOW_HIDDEN);
+	schedule.window_id = SDL_GetWindowID(schedule.window);
+	SDL_CTOR(SDL_CreateRenderer, schedule.renderer, schedule.window, -1, 0);
+	SDL_CALL(SDL_SetRenderDrawColor, schedule.renderer, 0, 0, 0,  SDL_ALPHA_OPAQUE);
+	SDL_CALL(SDL_RenderSetLogicalSize, schedule.renderer, SCHEDULE_WINDOW_W,
+			SCHEDULE_WINDOW_H);
+#endif
 	SDL_CTOR(SDL_CreateTexture, schedule.texture, schedule.renderer,
 			gfx.display->format->format, SDL_TEXTUREACCESS_STATIC,
 			SCHEDULE_WINDOW_W, SCHEDULE_WINDOW_H);
@@ -343,6 +356,12 @@ void schedule_window_init(void)
 	SDL_CTOR(SDL_CreateRGBSurfaceWithFormat, schedule.saved, 0,
 			160, SCHEDULE_WINDOW_H,
 			GFX_DIRECT_BPP, GFX_DIRECT_FORMAT);
+
+#ifndef __SWITCH__
+	SDL_Surface *icon = icon_get(1);
+	if (icon)
+		SDL_SetWindowIcon(schedule.window, icon);
+#endif
 
 	// load UI parts
 	struct cg *cg = asset_cg_load("dialy.gpx");
@@ -389,9 +408,13 @@ static void update_time(void)
 
 static void schedule_close(void)
 {
+#ifdef __SWITCH__
+	gfx_screen_dirty();
+#else
+	SDL_HideWindow(schedule.window);
+#endif
 	audio_sysse_play("se03.wav", 0);
 	schedule.open = false;
-	gfx_screen_dirty();
 }
 
 bool shuusaku_subwindow_valid(void)
@@ -418,7 +441,12 @@ void shuusaku_schedule_window_toggle(void)
 			// round down to nearest multiple of 2
 			schedule.start_t = min(136, schedule.current_t) & ~1;
 		}
+#ifdef __SWITCH__
 		shuusaku_schedule_update();
+#else
+		schedule_window_draw();
+		SDL_ShowWindow(schedule.window);
+#endif
 		audio_sysse_play("se02.wav", 0);
 	}
 }
@@ -433,22 +461,29 @@ void schedule_window_update(void)
 	}
 	SDL_CALL(SDL_UpdateTexture, schedule.texture, NULL, schedule.display->pixels,
 			schedule.display->pitch);
+#ifdef __SWITCH__
+	// Single-window mode: the texture is blitted onto the main renderer by
+	// schedule_window_present() during the frame; just mark the screen dirty.
 	gfx_screen_dirty();
+#else
+	SDL_CALL(SDL_RenderClear, schedule.renderer);
+	SDL_CALL(SDL_RenderCopy, schedule.renderer, schedule.texture, NULL, NULL);
+	SDL_RenderPresent(schedule.renderer);
+#endif
 }
 
+#ifdef __SWITCH__
+// Single-window mode: scale the 800x376 schedule table into the main window's
+// logical size (centered) and blit it over the game frame.
 void schedule_window_present(void)
 {
 	if (!schedule.open)
 		return;
-	// Scale the 800x376 schedule table into the main window's logical size (centered)
-#ifdef __SWITCH__
 	SDL_Rect dst = { 0, (int)gfx_game_to_logical_y(50),
 		(int)gfx_game_to_logical_x(640), (int)gfx_game_to_logical_y(300) };
-#else
-	SDL_Rect dst = { 0, 50, 640, 300 };
-#endif
 	SDL_RenderCopy(gfx.renderer, schedule.texture, NULL, &dst);
 }
+#endif
 
 void shuusaku_schedule_update(void)
 {
@@ -717,6 +752,26 @@ bool shuusaku_schedule_window_event(SDL_Event *e)
 	if (!schedule.open)
 		return false;
 	switch (e->type) {
+#ifndef __SWITCH__
+	case SDL_WINDOWEVENT:
+		if (e->window.windowID != schedule.window_id)
+			break;
+		switch (e->window.event) {
+		case SDL_WINDOWEVENT_SHOWN:
+		case SDL_WINDOWEVENT_EXPOSED:
+		case SDL_WINDOWEVENT_RESIZED:
+		case SDL_WINDOWEVENT_SIZE_CHANGED:
+		case SDL_WINDOWEVENT_MAXIMIZED:
+		case SDL_WINDOWEVENT_RESTORED:
+			schedule_window_update();
+			return true;
+		case SDL_WINDOWEVENT_CLOSE:
+			assert(schedule.open);
+			shuusaku_schedule_window_toggle();
+			return true;
+		}
+		break;
+#endif
 	case SDL_KEYDOWN:
 		if (e->key.windowID != schedule.window_id)
 			break;
@@ -754,6 +809,7 @@ bool shuusaku_schedule_window_event(SDL_Event *e)
 			scroll_left();
 		}
 		return true;
+#ifdef __SWITCH__
 	case SDL_JOYBUTTONDOWN:
 		// Switch: D-pad left/right scroll the schedule timeline.
 		// (L/R are reserved for toggling the schedule/status windows.)
@@ -766,6 +822,7 @@ bool shuusaku_schedule_window_event(SDL_Event *e)
 			return true;
 		}
 		break;
+#endif
 	}
 	return false;
 }

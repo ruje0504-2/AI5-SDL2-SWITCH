@@ -120,28 +120,39 @@ static void status_window_update(void)
 		return;
 	SDL_CALL(SDL_UpdateTexture, status.texture, NULL, status.display->pixels,
 			status.display->pitch);
+#ifdef __SWITCH__
+	// Single-window mode: the texture is blitted onto the main renderer by
+	// status_window_present() during the frame; just mark the screen dirty.
 	gfx_screen_dirty();
+#else
+	SDL_CALL(SDL_RenderClear, status.renderer);
+	SDL_CALL(SDL_RenderCopy, status.renderer, status.texture, NULL, NULL);
+	SDL_RenderPresent(status.renderer);
+#endif
 }
 
+#ifdef __SWITCH__
+// Single-window mode: blit the 640x64 status bar over the top of the main
+// window (the Switch has one screen, so there is no separate status window).
 void status_window_present(void)
 {
 	if (!status.open)
 		return;
-	// 640x64 status bar is overlaid at the top of the main window
-#ifdef __SWITCH__
 	SDL_Rect dst = { 0, 0,
 		(int)gfx_game_to_logical_x(640), (int)gfx_game_to_logical_y(64) };
-#else
-	SDL_Rect dst = { 0, 0, 640, 64 };
-#endif
 	SDL_RenderCopy(gfx.renderer, status.texture, NULL, &dst);
 }
+#endif
 
 static void status_close(void)
 {
+#ifdef __SWITCH__
+	gfx_screen_dirty();
+#else
+	SDL_HideWindow(status.window);
+#endif
 	audio_sysse_play("se03.wav", 0);
 	status.open = false;
-	gfx_screen_dirty();
 }
 
 void shuusaku_status_window_toggle(void)
@@ -153,7 +164,11 @@ void shuusaku_status_window_toggle(void)
 			return;
 		status.open = true;
 		status_window_draw();
+#ifdef __SWITCH__
 		status_window_update();
+#else
+		SDL_ShowWindow(status.window);
+#endif
 		audio_sysse_play("se02.wav", 0);
 	}
 }
@@ -172,16 +187,56 @@ void shuusaku_status_update(void)
 
 bool shuusaku_status_window_event(SDL_Event *e)
 {
+#ifdef __SWITCH__
+	// No separate status window on Switch: nothing to do here.
 	(void)e;
 	return false;
+#else
+	if (!status.open)
+		return false;
+	switch (e->type) {
+	case SDL_WINDOWEVENT:
+		if (e->window.windowID != status.window_id)
+			break;
+		switch (e->window.event) {
+		case SDL_WINDOWEVENT_SHOWN:
+		case SDL_WINDOWEVENT_EXPOSED:
+		case SDL_WINDOWEVENT_RESIZED:
+		case SDL_WINDOWEVENT_SIZE_CHANGED:
+		case SDL_WINDOWEVENT_MAXIMIZED:
+		case SDL_WINDOWEVENT_RESTORED:
+			status_window_update();
+			return true;
+		case SDL_WINDOWEVENT_CLOSE:
+			assert(status.open);
+			shuusaku_status_window_toggle();
+			return true;
+		}
+		break;
+	}
+	return false;
+#endif
 }
 
 void shuusaku_status_init(void)
 {
-	// Switch single-window mode: reuse the main renderer
+#ifdef __SWITCH__
+	// Single-window mode: reuse the main window/renderer.
 	status.window = gfx.window;
 	status.renderer = gfx.renderer;
 	status.window_id = SDL_GetWindowID(gfx.window);
+#else
+	int x, y;
+	SDL_GetWindowPosition(gfx.window, &x, &y);
+	SDL_CTOR(SDL_CreateWindow, status.window, "風呂・食事＆アイテム",
+			x, y, STATUS_WINDOW_W, STATUS_WINDOW_H,
+			SDL_WINDOW_HIDDEN);
+	status.window_id = SDL_GetWindowID(status.window);
+	SDL_CTOR(SDL_CreateRenderer, status.renderer, status.window, -1, 0);
+	SDL_CALL(SDL_SetRenderDrawColor, status.renderer, 0, 0, 0,  SDL_ALPHA_OPAQUE);
+	SDL_CALL(SDL_RenderSetLogicalSize, status.renderer, STATUS_WINDOW_W,
+			STATUS_WINDOW_H);
+#endif
 	SDL_CTOR(SDL_CreateTexture, status.texture, status.renderer,
 			gfx.display->format->format, SDL_TEXTUREACCESS_STATIC,
 			STATUS_WINDOW_W, STATUS_WINDOW_H);
@@ -191,6 +246,12 @@ void shuusaku_status_init(void)
 	SDL_CTOR(SDL_CreateRGBSurfaceWithFormat, status.display, 0,
 			STATUS_WINDOW_W, STATUS_WINDOW_H,
 			GFX_DIRECT_BPP, GFX_DIRECT_FORMAT);
+
+#ifndef __SWITCH__
+	SDL_Surface *icon = icon_get(2);
+	if (icon)
+		SDL_SetWindowIcon(status.window, icon);
+#endif
 
 	// load UI parts
 	struct cg *cg = asset_cg_load("propitem.gpx");
