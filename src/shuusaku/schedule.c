@@ -326,7 +326,8 @@ void schedule_window_draw(void)
 
 void schedule_window_init(void)
 {
-	// Switch 单窗口: 复用主窗口/主渲染器, 日程表作为叠加层
+	// Switch single-window mode: reuse the main window/renderer; the
+	// schedule table is drawn as an overlay on top
 	schedule.window = gfx.window;
 	schedule.renderer = gfx.renderer;
 	schedule.window_id = SDL_GetWindowID(gfx.window);
@@ -439,7 +440,7 @@ void schedule_window_present(void)
 {
 	if (!schedule.open)
 		return;
-	// 800x376 日程表缩放到主窗口逻辑尺寸内(居中)
+	// Scale the 800x376 schedule table into the main window's logical size (centered)
 #ifdef __SWITCH__
 	SDL_Rect dst = { 0, (int)gfx_game_to_logical_y(50),
 		(int)gfx_game_to_logical_x(640), (int)gfx_game_to_logical_y(300) };

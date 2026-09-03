@@ -29,7 +29,7 @@ struct gfx_view { unsigned w, h; };
 extern struct gfx_view gfx_view;
 
 #ifdef __SWITCH__
-// Switch 显示分辨率(逻辑) 960x720, 画面置中
+// Switch logical display resolution 960x720, picture centered
 #define GFX_DISPLAY_W 960
 #define GFX_DISPLAY_H 720
 static inline float gfx_logical_to_game_x(float x) { return x * gfx_view.w / (float)GFX_DISPLAY_W; }

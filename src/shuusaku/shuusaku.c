@@ -97,6 +97,17 @@ static void unprefixed_error(void)
 	VM_ERROR("Unprefixed text");
 }
 
+/*
+ * Draw the per-frame overlays specific to Shuusaku (schedule/status windows)
+ * on top of the rendered game frame.  Registered as game->overlay_present so
+ * the generic gfx_update() never has to know about game-specific windows.
+ */
+void shuusaku_overlay_present(void)
+{
+	schedule_window_present();
+	status_window_present();
+}
+
 void shuusaku_draw_text(const char *_text)
 {
 	texthook_push(_text);
@@ -1766,6 +1777,7 @@ struct game game_shuusaku = {
 	.var4_size = VAR4_SIZE,
 	.mem16_size = MEM16_SIZE,
 	.handle_event = shuusaku_handle_event,
+	.overlay_present = shuusaku_overlay_present,
 	.mem_init = shuusaku_mem_init,
 	.mem_restore = shuusaku_mem_restore,
 	.init = shuusaku_init,

@@ -367,7 +367,7 @@ void gfx_init(const char *name)
 	if (config.controller.enabled)
 		SDL_CALL(SDL_InitSubSystem, SDL_INIT_GAMECONTROLLER);
 #ifdef __SWITCH__
-	// Switch: 全屏窗口 1280x720, 逻辑 960x720(画面置中)
+	// Switch: fullscreen 1280x720 window, 960x720 logical size (centered)
 	SDL_CTOR(SDL_CreateWindow, gfx.window, title,
 			SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 1280, 720,
 			SDL_WINDOW_RESIZABLE);
@@ -387,9 +387,6 @@ void gfx_init(const char *name)
 	gfx_init_window();
 	atexit(gfx_fini);
 }
-
-void schedule_window_present(void);
-void status_window_present(void);
 
 void gfx_update(void)
 {
@@ -418,23 +415,24 @@ void gfx_update(void)
 			+ dst_r.x * gfx.display->format->BytesPerPixel;
 		SDL_CALL(SDL_UpdateTexture, gfx.texture, &dst_r, p, gfx.display->pitch);
 	}
-	// 用纯黑清屏(光标绘制会改绘制色, 这里强制黑, 避免黑边变白)
+	// Clear with pure black (cursor drawing changes the draw color, so force
+	// black here to keep the letterbox borders from turning white)
 	SDL_SetRenderDrawColor(gfx.renderer, 0, 0, 0, SDL_ALPHA_OPAQUE);
 	SDL_CALL(SDL_RenderClear, gfx.renderer);
 	SDL_CALL(SDL_RenderCopy, gfx.renderer, gfx.texture, NULL, NULL);
-	schedule_window_present();
-	status_window_present();
+	if (game->overlay_present)
+		game->overlay_present();
 #ifdef __SWITCH__
-	// Switch 驱动不渲染 SDL 光标, 手动画个 Windows 风格箭头
-	// 5 秒未移动摇杆则隐藏光标
+	// The Switch driver does not render the SDL cursor, so draw a
+	// Windows-style arrow by hand; hide it after 5s of no stick movement.
 	if (SDL_GetTicks() - input_cursor_last_activity() <= 5000) {
 		unsigned gx, gy;
 		cursor_get_pos(&gx, &gy);
-		// 箭头绘制在逻辑坐标里, 由 SDL 自动做 letterbox 变换
+		// The arrow is drawn in logical coordinates; SDL applies the letterbox transform.
 		int x = (int)gfx_game_to_logical_x((float)gx);
 		int y = (int)gfx_game_to_logical_y((float)gy);
 
-		// 黑色描边
+		// Black outline
 		SDL_SetRenderDrawColor(gfx.renderer, 0, 0, 0, 255);
 		SDL_RenderDrawLine(gfx.renderer, x - 1, y - 1, x - 1, y + 16);
 		SDL_RenderDrawLine(gfx.renderer, x - 1, y + 16, x + 11, y + 5);
@@ -443,7 +441,7 @@ void gfx_update(void)
 		SDL_RenderDrawLine(gfx.renderer, x + 6, y + 9, x + 16, y + 19);
 		SDL_RenderDrawLine(gfx.renderer, x + 4, y + 8, x + 6, y + 9);
 
-		// 白色填充
+		// White fill
 		SDL_SetRenderDrawColor(gfx.renderer, 255, 255, 255, 255);
 		SDL_Vertex head[3] = {
 			{ { (float)x, (float)y },          { 255, 255, 255, 255 }, { 0.0f, 0.0f } },

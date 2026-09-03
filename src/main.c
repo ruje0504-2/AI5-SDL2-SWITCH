@@ -633,8 +633,9 @@ int main(int argc, char *argv[])
 
 #ifdef __SWITCH__
 	if (argc == 0 && !ai5_switch_romfs_active) {
-		/* SD 卡布局: 在 SD 卡找游戏数据目录 (RomFS 布局已由
-		 * ai5_switch_storage_init 处理, 不需要也不应再 chdir). */
+		/* SD card layout: look for the game data directory on the SD card.
+		 * (The RomFS layout is already handled by ai5_switch_storage_init,
+		 * so we must not -- and need not -- chdir again.) */
 		static const char *default_dirs[] = {
 			"/switch/syuusaku",
 			"/switch/ai5/syuusaku",

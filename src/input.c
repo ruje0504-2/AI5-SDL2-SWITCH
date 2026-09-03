@@ -163,8 +163,11 @@ void input_init(void)
 	if (cursor_swap_event == (uint32_t)-1)
 		WARNING("Failed to register custom event type");
 
-	// Switch: SDL2 的 switch 手柄驱动把手柄报成普通 joystick(名字派生 GUID),
-	// 游戏控制器子系统认不出来。手动加映射并打开。
+	find_controller();
+#ifdef __SWITCH__
+	/* On Switch, SDL2's joystick driver reports the controller as a plain
+	 * joystick that the game-controller subsystem does not recognise, so add
+	 * a mapping for it manually and fall back to raw joystick access. */
 	for (int i = 0; i < SDL_NumJoysticks(); i++) {
 		const char *name = SDL_JoystickNameForIndex(i);
 		if (!name || !strstr(name, "Switch"))
@@ -181,9 +184,9 @@ void input_init(void)
 			gs, name);
 		SDL_GameControllerAddMapping(mapping);
 	}
-	find_controller();
 	if (!controller && SDL_NumJoysticks() > 0)
 		joystick = SDL_JoystickOpen(0);
+#endif
 }
 
 static enum input_event_type input_event_from_keycode(SDL_Keycode k)
@@ -309,7 +312,7 @@ static void controller_update_analog(void)
 		cursor_last_activity = SDL_GetTicks();
 
 #ifdef __SWITCH__
-	// Switch: 直接推进游戏坐标系里的光标, 不经过 SDL 鼠标 Warp。
+	// Switch: move the cursor in game coordinates directly, bypassing SDL mouse warping.
 	cursor_move_stick(stick_x * config.controller.cursor_speed,
 			stick_y * config.controller.cursor_speed);
 #else
@@ -360,7 +363,10 @@ static bool active_controller(int which)
 			SDL_GameControllerGetJoystick(controller));
 }
 
-// ===== Switch 手柄 fallback: 直接读 SDL_Joystick =====
+#ifdef __SWITCH__
+/* Switch controller fallback: SDL2's Switch driver does not register the
+ * controller with the game-controller subsystem, so read the raw joystick
+ * instead and map its buttons to the engine's input events. */
 static enum input_event_type joystick_button_to_event(int b)
 {
 	switch (b) {
@@ -370,11 +376,11 @@ static enum input_event_type joystick_button_to_event(int b)
 	case 3:  return INPUT_SPACE;      // Y
 	case 6:  return INPUT_PAGE_UP;    // L
 	case 7:  return INPUT_PAGE_DOWN;  // R
-	case 10: return INPUT_SPACE;      // + (菜单)
-	case 12: return INPUT_LEFT;       // 方向左
-	case 13: return INPUT_UP;         // 方向上
-	case 14: return INPUT_RIGHT;      // 方向右
-	case 15: return INPUT_DOWN;       // 方向下
+	case 10: return INPUT_SPACE;      // + (menu)
+	case 12: return INPUT_LEFT;       // d-pad left
+	case 13: return INPUT_UP;         // d-pad up
+	case 14: return INPUT_RIGHT;      // d-pad right
+	case 15: return INPUT_DOWN;       // d-pad down
 	default: return INPUT_NONE;
 	}
 }
@@ -389,6 +395,7 @@ static void joystick_button_event(SDL_JoyButtonEvent *ev)
 	if (down)
 		key_down_timestamp[type] = SDL_GetTicks();
 }
+#endif /* __SWITCH__ */
 
 static float joystick_get_axis(int axis)
 {
@@ -408,10 +415,10 @@ static void joystick_update_analog(void)
 
 	float stick_x = 0.0f, stick_y = 0.0f;
 	if (config.controller.left_stick == CONFIG_STICK_CURSOR) {
-		stick_x = joystick_get_axis(0);  // 左摇杆 X
-		stick_y = joystick_get_axis(1);  // 左摇杆 Y
+		stick_x = joystick_get_axis(0);  // left stick X
+		stick_y = joystick_get_axis(1);  // left stick Y
 	}
-	// 右摇杆也计入光标活动(隐藏判定用)
+	// Right stick counts as cursor activity too (for the auto-hide check)
 	float rsx = joystick_get_axis(2);
 	float rsy = joystick_get_axis(3);
 	if (fabsf(stick_x) > 0.01f || fabsf(stick_y) > 0.01f
@@ -419,7 +426,7 @@ static void joystick_update_analog(void)
 		cursor_last_activity = SDL_GetTicks();
 
 #ifdef __SWITCH__
-	// Switch: 直接推进游戏坐标系里的光标, 不经过 SDL 鼠标 Warp。
+	// Switch: move the cursor in game coordinates directly, bypassing SDL mouse warping.
 	cursor_move_stick(stick_x * config.controller.cursor_speed,
 			stick_y * config.controller.cursor_speed);
 #else
@@ -502,11 +509,13 @@ void handle_events(void)
 			if (active_controller(e.cdevice.which))
 				controller_button_event(&e.cbutton);
 			break;
+#ifdef __SWITCH__
 		case SDL_JOYBUTTONDOWN:
 		case SDL_JOYBUTTONUP:
 			if (joystick && e.jbutton.which == SDL_JoystickInstanceID(joystick))
 				joystick_button_event(&e.jbutton);
 			break;
+#endif
 		default:
 			if (e.type == cursor_swap_event)
 				cursor_swap();

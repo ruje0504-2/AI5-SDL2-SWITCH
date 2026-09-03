@@ -63,7 +63,7 @@ static int get_linear_volume(int vol)
 	return linear_volume;
 }
 
-// NOTE (Shuusaku / 臭作 Switch port): "file" comes from the .awd archives,
+// NOTE (Shuusaku Switch port): "file" comes from the .awd archives,
 // whose entries are named "*.wav" but actually contain MP3 data. If you get
 // no voice/BGM at all, libsndfile was likely built without MPEG (mpg123)
 // support -- see mixer_stream_open() and switch-src/README.md.

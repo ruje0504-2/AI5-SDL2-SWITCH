@@ -1001,8 +1001,9 @@ void cursor_hide(void)
 }
 
 #ifdef __SWITCH__
-// Switch: SDL 的 WarpMouse 在 Switch 驱动上不可靠(相对鼠标, 无绝对 Warp),
-// 因此直接维护游戏坐标系里的光标位置, 由摇杆驱动, 与 SDL 鼠标完全脱钩。
+// Switch: SDL's WarpMouse is unreliable on the Switch driver (relative
+// mouse only, no absolute warp), so track the cursor in game coordinates
+// directly, driven by the joystick and decoupled from the SDL mouse.
 static float switch_cursor_x = 0.0f;
 static float switch_cursor_y = 0.0f;
 #endif
@@ -1027,7 +1028,8 @@ void cursor_move_stick(float dx, float dy)
 #ifdef __SWITCH__
 	float nx = clamp(0.0f, (float)gfx_view.w, switch_cursor_x + dx);
 	float ny = clamp(0.0f, (float)gfx_view.h, switch_cursor_y + dy);
-	// 光标实际移动时才标脏, 触发立即重绘(否则箭头会卡在旧位置, 表现为刷新卡顿)
+	// Only mark the screen dirty when the cursor actually moves, forcing an
+	// immediate redraw (otherwise the arrow would stick at its old position).
 	if (nx != switch_cursor_x || ny != switch_cursor_y) {
 		switch_cursor_x = nx;
 		switch_cursor_y = ny;

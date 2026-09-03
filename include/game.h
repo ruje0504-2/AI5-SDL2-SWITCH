@@ -121,6 +121,10 @@ struct game {
 	void (*draw_text_han)(const char *text);
 	// called after animation draw ops
 	void (*after_anim_draw)(struct anim_draw_call *call);
+	// called once per rendered frame, after the main game surface has been
+	// copied to the renderer but before present; games may draw extra
+	// on-screen overlays here. NULL when the game has no overlays.
+	void (*overlay_present)(void);
 	// VM implementation (vm_ai5 or vm_aiw)
 	struct vm_impl vm;
 	// VM opcode tables

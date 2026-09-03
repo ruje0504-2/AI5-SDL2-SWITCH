@@ -494,7 +494,7 @@ static SF_VIRTUAL_IO mixer_stream_vio = {
 };
 
 /*
- * NOTE (Shuusaku / 臭作 Switch port): the audio entries stored inside the
+ * NOTE (Shuusaku Switch port): the audio entries stored inside the
  * game's .awd archives (voice.awd, bgm.awd, se.awd) are NAMED "*.wav", but
  * the actual data is MP3 (MPEG audio layer III). libsndfile is what decodes
  * them here, so libsndfile MUST be built with MPEG support (libmpg123 +

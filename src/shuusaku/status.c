@@ -127,7 +127,7 @@ void status_window_present(void)
 {
 	if (!status.open)
 		return;
-	// 640x64 状态栏叠放在主窗口顶部
+	// 640x64 status bar is overlaid at the top of the main window
 #ifdef __SWITCH__
 	SDL_Rect dst = { 0, 0,
 		(int)gfx_game_to_logical_x(640), (int)gfx_game_to_logical_y(64) };
@@ -178,7 +178,7 @@ bool shuusaku_status_window_event(SDL_Event *e)
 
 void shuusaku_status_init(void)
 {
-	// Switch 单窗口: 复用主渲染器
+	// Switch single-window mode: reuse the main renderer
 	status.window = gfx.window;
 	status.renderer = gfx.renderer;
 	status.window_id = SDL_GetWindowID(gfx.window);
