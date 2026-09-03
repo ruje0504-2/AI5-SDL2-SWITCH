@@ -27,16 +27,54 @@
 #include "savedata.h"
 #include "vm.h"
 
+#ifdef __SWITCH__
+#include <switch.h>
+#include "switch_hos.h"
+#endif
+
+/*
+ * Resolve a save name to the path that should be opened.
+ *
+ * On Switch full-NSP builds, save files live in HOS-managed SaveData
+ * mounted at "save:/" (see ai5_switch_save_active).  On every other
+ * platform/layout the plain relative name is used, resolved against the cwd
+ * as before.  The caller owns the returned string.
+ */
+static char *save_path(const char *save_name)
+{
+#ifdef __SWITCH__
+	if (ai5_switch_save_active) {
+		size_t len = strlen(save_name);
+		char *path = xmalloc(len + sizeof("save:/"));
+		sprintf(path, "save:/%s", save_name);
+		return path;
+	}
+#endif
+	return xstrdup(save_name);
+}
+
 static void close_save(FILE *f)
 {
 	if (fclose(f))
 		WARNING("fclose: %s", strerror(errno));
+#ifdef __SWITCH__
+	/* HOS SaveData writes are buffered by fsdev until committed; without
+	 * this the data never reaches the save image.  Commit after every
+	 * close (cheap and idempotent; reads need no special handling). */
+	if (ai5_switch_save_active) {
+		Result rc = fsdevCommitDevice("save");
+		if (R_FAILED(rc))
+			WARNING("fsdevCommitDevice(save): 0x%x", (unsigned)rc);
+	}
+#endif
 }
 
 // XXX: Save files should be shipped with the game, but if not we create them.
 static void create_save(const char *save_name)
 {
-	FILE *f = file_open_utf8(save_name, "wb");
+	char *path = save_path(save_name);
+	FILE *f = file_open_utf8(path, "wb");
+	free(path);
 	if (!f) {
 		WARNING("fopen: %s", strerror(errno));
 		return;
@@ -50,13 +88,35 @@ static void create_save(const char *save_name)
 
 static FILE *open_save(const char *save_name, const char *mode)
 {
+	FILE *f = NULL;
+
+#ifdef __SWITCH__
+	if (ai5_switch_save_active) {
+		/* HOS SaveData: exact case, no on-disk icase lookup needed. */
+		char *path = save_path(save_name);
+		f = file_open_utf8(path, mode);
+		if (!f && (strchr(mode, 'w') || strchr(mode, '+'))) {
+			create_save(save_name);
+			f = file_open_utf8(path, mode);
+		}
+		free(path);
+		return f;
+	}
+	if (ai5_switch_romfs_active) {
+		/* Full-NSP run without a usable SaveData mount: the cwd is the
+		 * read-only RomFS.  Silently fail saves rather than spamming
+		 * warnings (the game keeps running, saving is just unavailable). */
+		return NULL;
+	}
+#endif
+
 	char *path = path_get_icase(save_name);
 	if (!path) {
 		create_save(save_name);
-		path = strdup(save_name);
+		path = save_path(save_name);
 		WARNING("Save file \"%s\" doesn't exist", save_name);
 	}
-	FILE *f = file_open_utf8(path, mode);
+	f = file_open_utf8(path, mode);
 	free(path);
 	return f;
 }
@@ -65,7 +125,10 @@ void savedata_read(const char *save_name, uint8_t *buf, uint32_t off, size_t siz
 {
 	FILE *f = open_save(save_name, "rb");
 	if (!f) {
-		WARNING("Failed to open save file \"%s\": %s", save_name, strerror(errno));
+#ifdef __SWITCH__
+		if (!ai5_switch_romfs_active)
+#endif
+			WARNING("Failed to open save file \"%s\": %s", save_name, strerror(errno));
 		return;
 	}
 	if (off && fseek(f, off, SEEK_SET) < 0)
@@ -81,7 +144,10 @@ void savedata_write(const char *save_name, const uint8_t *buf, uint32_t off, siz
 	//      truncate or append
 	FILE *f = open_save(save_name, "r+b");
 	if (!f) {
-		WARNING("Failed to open save file \"%s\": %s", save_name, strerror(errno));
+#ifdef __SWITCH__
+		if (!ai5_switch_romfs_active)
+#endif
+			WARNING("Failed to open save file \"%s\": %s", save_name, strerror(errno));
 		return;
 	}
 	if (off && fseek(f, off, SEEK_SET) < 0)
@@ -139,7 +205,10 @@ void savedata_save_union_var4(const char *save_name)
 	const size_t var4_off = memory_ptr.var4 - memory_raw;
 	FILE *f = open_save(save_name, "r+b");
 	if (!f) {
-		WARNING("Failed to open save file \"%s\": %s", save_name, strerror(errno));
+#ifdef __SWITCH__
+		if (!ai5_switch_romfs_active)
+#endif
+			WARNING("Failed to open save file \"%s\": %s", save_name, strerror(errno));
 		return;
 	}
 	if (fseek(f, var4_off, SEEK_SET) < 0) {

@@ -57,6 +57,7 @@ sources = [
   'src/isaku/item_window.c',
   'src/kakyuusei.c',
   'src/main.c',
+  'src/switch_hos.c',
   'src/map.c',
   'src/menu.c',
   'src/popup_menu.c',

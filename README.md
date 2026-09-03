@@ -237,13 +237,21 @@ other supported games (YU-NO, Doukyuusei, Isaku, etc.) are not.
 
 * Build target: aarch64 (horizon), devkitPro toolchain, cross-compiled with
   meson (`switch-cross.txt`).
-* Game data is read from `/switch/syuusaku/` on the SD card.
+* Two runtime layouts:
+  - **Full NSP** (`0100E887ADE40000.nsp`): game data embedded in the title's
+    RomFS; saves go to HOS-managed SaveData (`save:/`), visible in System
+    Settings → Data Management. Run directly from the home menu.
+  - **NRO** (`syuusaku.nro`): game data read from `/switch/syuusaku/` on the
+    SD card; saves written next to the data (legacy hbmenu behaviour).
 * Rendering: 960x720 centered in a 1280x720 window, drawn software cursor.
 * Input: left stick drives the in-game cursor, A = click, B = cancel/right
   click, X = Ctrl, Y = Space, L/R toggle the schedule/status windows,
   D-pad navigates menus.
 * `subprojects/libai5` is vendored into this repository with Switch fixes
   (mmap stub, dirname/basename replacements).
+* The Switch-specific storage/save handling lives in `src/switch_hos.c`
+  (RomFS mounting, HOS SaveData mounting), guarded by `__SWITCH__` so other
+  platforms and games are unaffected.
 
 **Fonts are NOT included in this repository** (file size). The Chinese build
 embeds a CJK-capable `fonts/Kosugi-Regular.ttf` (full-CJK build) plus Noto
@@ -290,8 +298,29 @@ Read that section before your first build.
        elf2nro build/ai5.strip syuusaku.nro \
          --nacp=build/syuusaku.nacp --icon=build/icon_256.jpg
 
-4. Deploy: copy `syuusaku.nro` to `SD:/switch/syuusaku.nro` and the game
-   data to `SD:/switch/syuusaku/`. Hold R while launching any game to enter
-   hbmenu (full-memory mode) and run `syuusaku`.
+4. Deploy (NRO): copy `syuusaku.nro` to `SD:/switch/syuusaku.nro` and the
+   game data to `SD:/switch/syuusaku/`. Hold R while launching any game to
+   enter hbmenu (full-memory mode) and run `syuusaku`.
+
+### Building the full NSP
+
+`make-nsp.sh` packages everything into a single installable NSP (program +
+read-only game data in RomFS; saves managed by HOS):
+
+    ./make-nsp.sh        # outputs 0100E887ADE40000.nsp
+
+It runs the cross build, then uses devkitPro tools (`elf2nso`, `npdmtool`,
+`nacptool`) and [hacbrewpack](https://github.com/scturtle/hacBrewPack) with
+`~/.switch/prod.keys`. The icon is cropped from `main.jpg` (bottom square,
+256x256). RomFS contains only the read-only data files (`*.arc`, `*.awd`,
+`*.ini`) from the game-data directory — never the runtime `flag*`/`save`
+files. Title ID `0100E887ADE40000` (末尾 000 → base Program, no DLC/Update
+ambiguity).
+
+SaveData notes: the engine mounts the current user's SaveData as `save:/`
+(`accountGetPreselectedUser` → `fsOpen_SaveData`), and `savedata.c` commits
+each write with `fsdevCommitDevice("save")` so data actually reaches the
+save image. If mounting fails (e.g. under hbmenu) saves silently stay
+disabled on the full-NSP — never written to the read-only RomFS.
 
 Adapted using DeepSeek HARNESS.

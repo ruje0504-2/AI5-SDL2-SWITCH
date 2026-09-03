@@ -17,10 +17,16 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <stdio.h>
 #include <time.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #include <getopt.h>
+
+#ifdef __APPLE__
+/* macOS does not expose PATH_MAX through limits.h under strict C11 */
+#include <sys/syslimits.h>
+#endif
 
 #include <SDL.h>
 
@@ -40,6 +46,10 @@
 #include "input.h"
 #include "memory.h"
 #include "vm.h"
+
+#ifdef __SWITCH__
+#include "switch_hos.h"
+#endif
 
 #include "../version.h"
 
@@ -500,6 +510,14 @@ void restart(void)
 
 int main(int argc, char *argv[])
 {
+#ifdef __SWITCH__
+	/* Full-NSP builds keep the read-only game data in the title RomFS and
+	 * save files in HOS SaveData.  Mount both and chdir to the data dir
+	 * before anything opens a game file.  For homebrew NROs this falls back
+	 * to the SD card directories used previously. */
+	ai5_switch_storage_init();
+#endif
+
 	saved_argc = argc;
 	saved_argv = argv;
 	if (!getcwd(saved_cwd, PATH_MAX)) {
@@ -614,8 +632,9 @@ int main(int argc, char *argv[])
 	argv += optind;
 
 #ifdef __SWITCH__
-	if (argc == 0) {
-		/* Switch 上默认在 SD 卡找游戏数据目录 */
+	if (argc == 0 && !ai5_switch_romfs_active) {
+		/* SD 卡布局: 在 SD 卡找游戏数据目录 (RomFS 布局已由
+		 * ai5_switch_storage_init 处理, 不需要也不应再 chdir). */
 		static const char *default_dirs[] = {
 			"/switch/syuusaku",
 			"/switch/ai5/syuusaku",
