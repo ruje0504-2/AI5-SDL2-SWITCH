@@ -323,4 +323,12 @@ each write with `fsdevCommitDevice("save")` so data actually reaches the
 save image. If mounting fails (e.g. under hbmenu) saves silently stay
 disabled on the full-NSP — never written to the read-only RomFS.
 
+Save file name casing: the engine's System.SaveData helpers generate
+upper-case names such as `FLAG0`. On the SD-card (NRO) layout these are
+matched case-insensitively against the lower-case `flag0`...`flag23` files
+shipped with the game data. HOS SaveData, however, is case-sensitive, so on
+the full-NSP the saves appear as upper-case `FLAG0` etc. inside the system
+save area — this is expected and does not affect the game; the two layouts
+simply follow their respective filesystems' casing rules.
+
 Adapted using DeepSeek HARNESS.
