@@ -14,6 +14,8 @@
  * along with this program; if not, see <http://gnu.org/licenses/>.
  */
 
+#include "isaku_switch.h"
+
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
@@ -388,6 +390,20 @@ void gfx_init(const char *name)
 	atexit(gfx_fini);
 }
 
+/* A GPU swap is not equivalent to the original synchronous GDI region blit.
+ * Allow VM operations to accumulate for 8ms after a completed submission.
+ * Starting at completion matters: a blocking swap must not immediately make
+ * the very next one-line copy eligible for another swap. No VM time is slept. */
+static uint32_t last_present_end;
+static bool have_presented;
+void gfx_update_pending(void)
+{
+    if (isaku_switch_active() && have_presented
+            && (uint32_t)(SDL_GetTicks() - last_present_end) < 8)
+        return;
+    gfx_update();
+}
+
 void gfx_update(void)
 {
 	struct gfx_surface *screen = &gfx.surface[gfx.screen];
@@ -422,6 +438,9 @@ void gfx_update(void)
 	SDL_CALL(SDL_RenderCopy, gfx.renderer, gfx.texture, NULL, NULL);
 	if (game->overlay_present)
 		game->overlay_present();
+	if (isaku_switch_active()) {
+		cursor_draw();
+	} else {
 #ifdef __SWITCH__
 	// The Switch driver does not render the SDL cursor, so draw a
 	// Windows-style arrow by hand; hide it after 5s of no stick movement.
@@ -458,13 +477,19 @@ void gfx_update(void)
 		SDL_RenderGeometry(gfx.renderer, NULL, shaft, 4, NULL, 0);
 	}
 #endif
+	}
 	SDL_RenderPresent(gfx.renderer);
+	if (isaku_switch_active()) {
+		last_present_end = SDL_GetTicks();
+		have_presented = true;
+	}
 	gfx_clean(gfx.screen);
 }
 
 void gfx_display_freeze(void)
 {
 	GFX_LOG("gfx_display_freeze");
+	if (isaku_switch_active()) gfx_update();
 	gfx.hidden = true;
 }
 
@@ -482,6 +507,7 @@ void _gfx_display_fade_out(uint32_t vm_color, unsigned ms, bool(*cb)(void))
 	GFX_LOG("gfx_display_fade_out(%u,%u)", vm_color, ms);
 	if (gfx.hidden)
 		return;
+	if (isaku_switch_active()) gfx_update();
 	gfx.hidden = true;
 
 	int step = roundf(256.f / ((ms * config.transition_speed) / FADE_FRAME_TIME));

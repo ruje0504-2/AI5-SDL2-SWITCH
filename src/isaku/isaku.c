@@ -14,6 +14,8 @@
  * along with this program; if not, see <http://gnu.org/licenses/>.
  */
 
+#include "isaku_switch.h"
+
 #include <SDL.h>
 
 #include "nulib.h"
@@ -37,6 +39,7 @@
 #include "vm_private.h"
 
 #include "isaku.h"
+#include "isaku_effects.h"
 
 #define MES_NAME_SIZE 128
 #define VAR4_SIZE 2048
@@ -304,6 +307,54 @@ static void isaku_display(struct param_list *params)
 	}
 }
 
+#ifdef ISAKU_SWITCH_PORT
+static void isaku_graphics_crossfade(struct param_list *params)
+{
+    /* AI5WIN 0040fdc0..00410075: /32 BGR555 blend, accelerating
+     * weights 0,1,4,9,16,25, then a final source copy. Each intermediate
+     * image is explicitly presented (UpdateWindow); no fixed 33ms wait. */
+    unsigned ax = vm_expr_param(params, 1), ay = vm_expr_param(params, 2);
+    unsigned ex = vm_expr_param(params, 3), ey = vm_expr_param(params, 4);
+    unsigned an = vm_expr_param(params, 5);
+    unsigned bx = vm_expr_param(params, 6), by = vm_expr_param(params, 7);
+    unsigned bn = vm_expr_param(params, 8);
+    unsigned dx = vm_expr_param(params, 9), dy = vm_expr_param(params, 10);
+    unsigned dn = params->nr_params > 11 ? vm_expr_param(params, 11) : 0;
+    SDL_Surface *a = gfx_get_surface(an), *b = gfx_get_surface(bn);
+    SDL_Surface *d = gfx_get_surface(dn);
+    if (ex < ax || ey < ay)
+        VM_ERROR("Invalid Isaku graphics crossfade rectangle");
+    unsigned w = ex - ax + 1, h = ey - ay + 1;
+    if (ax >= (unsigned)a->w || ay >= (unsigned)a->h
+            || bx >= (unsigned)b->w || by >= (unsigned)b->h
+            || dx >= (unsigned)d->w || dy >= (unsigned)d->h
+            || w > (unsigned)a->w - ax || h > (unsigned)a->h - ay
+            || w > (unsigned)b->w - bx || h > (unsigned)b->h - by
+            || w > (unsigned)d->w - dx || h > (unsigned)d->h - dy
+            || a->format->format != SDL_PIXELFORMAT_RGB24
+            || b->format->format != SDL_PIXELFORMAT_RGB24
+            || d->format->format != SDL_PIXELFORMAT_RGB24)
+        VM_ERROR("Invalid Isaku graphics crossfade surfaces");
+    for (unsigned weight = 0, acceleration = 0; weight < 32;) {
+        if (input_down(INPUT_SHIFT))
+            break;
+        for (unsigned y = 0; y < h; y++) {
+            const uint8_t *pa = (uint8_t*)a->pixels + (ay+y)*a->pitch + ax*3;
+            const uint8_t *pb = (uint8_t*)b->pixels + (by+y)*b->pitch + bx*3;
+            uint8_t *pd = (uint8_t*)d->pixels + (dy+y)*d->pitch + dx*3;
+            for (unsigned x = 0; x < w*3; x++)
+                pd[x] = (uint8_t)((((pa[x] >> 3) * weight
+                        + (pb[x] >> 3) * (32-weight)) / 32) << 3);
+        }
+        gfx_dirty(dn, dx, dy, w, h);
+        gfx_update();
+        vm_peek();
+        acceleration += 180;
+        weight += acceleration / 100;
+    }
+    gfx_copy(ax, ay, w, h, an, dx, dy, dn);
+}
+#else
 static void isaku_graphics_crossfade(struct param_list *params)
 {
 	// XXX: params are always the same except for src/dst
@@ -321,7 +372,25 @@ static void isaku_graphics_crossfade(struct param_list *params)
 	}
 	gfx_copy(0, 0, 640, 480, src_a, 0, 0, 0);
 }
+#endif
 
+#ifdef ISAKU_SWITCH_PORT
+static void isaku_graphics(struct param_list *params)
+{
+    /* AI5WIN 0040bb0a/0040bb7f: ordinary and masked copies have no
+     * per-scanline delay. Presentation is coalesced independently by the VM. */
+    switch (vm_expr_param(params, 0)) {
+    case 0: sys_graphics_copy(params); break;
+    case 1: sys_graphics_copy_masked(params); break;
+	case 2: sys_graphics_fill_bg(params); break;
+	case 3: sys_graphics_copy_swap(params); break;
+	case 4: sys_graphics_swap_bg_fg(params); break;
+	case 5: sys_graphics_copy_progressive(params); break;
+	case 6: sys_graphics_compose(params); break;
+	case 7: isaku_graphics_crossfade(params); break;
+	}
+}
+#else
 static void isaku_graphics(struct param_list *params)
 {
 	static int frame = 0;
@@ -352,7 +421,23 @@ static void isaku_graphics(struct param_list *params)
 	case 7: isaku_graphics_crossfade(params); break;
 	}
 }
+#endif
 
+#ifdef ISAKU_SWITCH_PORT
+static void isaku_wait(struct param_list *params)
+{
+	/* PC shifts the argument by two before checking the 15ms counter.
+     * A zero target pumps messages once; it is not a one-frame delay. */
+	if (params->nr_params > 0 && vm_expr_param(params, 0) < 4) {
+        if (!input_down(INPUT_SHIFT)) {
+            vm_peek();
+            vm_delay(0);
+        }
+	} else {
+		sys_wait(params);
+	}
+}
+#else
 static void isaku_wait(struct param_list *params)
 {
 	if (params->nr_params > 0 && vm_expr_param(params, 0) == 0) {
@@ -361,6 +446,7 @@ static void isaku_wait(struct param_list *params)
 		sys_wait(params);
 	}
 }
+#endif
 
 static void isaku_dungeon(struct param_list *params)
 {
@@ -638,6 +724,24 @@ static void util_save_heap(struct param_list *params)
 /*
  * Left scroll animation. Used during Jinpachi's confession.
  */
+#ifdef ISAKU_SWITCH_PORT
+static void util_scroll_left(struct param_list *params)
+{
+    /* EXE 004097ec..004098db, including the final exact-distance blit. */
+    unsigned sx = vm_expr_param(params, 1), sy = vm_expr_param(params, 2);
+    unsigned w = vm_expr_param(params, 3), h = vm_expr_param(params, 4);
+    unsigned src = vm_expr_param(params, 5);
+    unsigned dx = vm_expr_param(params, 6), dy = vm_expr_param(params, 7);
+    unsigned dst = vm_expr_param(params, 8), distance = vm_expr_param(params, 9);
+    vm_timer_t timer = vm_timer_create();
+    for (unsigned x = 0; x < distance; x += 4) {
+        gfx_copy(sx + x, sy, w, h, src, dx, dy, dst);
+        vm_peek();
+        vm_timer_tick(&timer, 16);
+    }
+    gfx_copy(sx + distance, sy, w, h, src, dx, dy, dst);
+}
+#else
 static void util_scroll_left(struct param_list *params)
 {
 	// XXX: always called with same params
@@ -652,6 +756,7 @@ static void util_scroll_left(struct param_list *params)
 		vm_timer_tick(&timer, 16);
 	}
 }
+#endif
 
 static void util_delay(struct param_list *params)
 {
@@ -674,6 +779,39 @@ static void util_delay(struct param_list *params)
  * Crossfade animation with start/end alpha. Used when looking behind the
  * projector screen.
  */
+#ifdef ISAKU_SWITCH_PORT
+static void util_crossfade(struct param_list *params)
+{
+    /* EXE 00409943..00409b43. Start inclusive, end exclusive (0..32).
+     * Original operates on the top-left of each surface and divides by 31. */
+    unsigned start = vm_expr_param(params, 12), end = vm_expr_param(params, 13);
+    unsigned w = vm_expr_param(params, 3), h = vm_expr_param(params, 4);
+    unsigned dst_no = vm_expr_param(params, 11);
+    SDL_Surface *a = gfx_get_surface(vm_expr_param(params, 5));
+    SDL_Surface *b = gfx_get_surface(vm_expr_param(params, 8));
+    SDL_Surface *dst = gfx_get_surface(dst_no);
+    if (start > 32 || end > 32 || w > a->w || w > b->w || w > dst->w
+            || h > a->h || h > b->h || h > dst->h
+            || a->format->format != SDL_PIXELFORMAT_RGB24
+            || b->format->format != SDL_PIXELFORMAT_RGB24
+            || dst->format->format != SDL_PIXELFORMAT_RGB24)
+        VM_ERROR("Invalid Isaku crossfade surfaces/weights");
+    vm_timer_t timer = vm_timer_create();
+    for (unsigned weight = start; weight < end; weight++) {
+        for (unsigned y = 0; y < h; y++) {
+            const uint8_t *pa = (uint8_t*)a->pixels + y * a->pitch;
+            const uint8_t *pb = (uint8_t*)b->pixels + y * b->pitch;
+            uint8_t *pd = (uint8_t*)dst->pixels + y * dst->pitch;
+            for (unsigned x = 0; x < w * 3; x++)
+                pd[x] = isaku_blend_channel(pa[x], pb[x], weight);
+        }
+        gfx_dirty(dst_no, 0, 0, w, h);
+        vm_peek();
+        /* Original is CPU-bound; retain the runtime's stable frame pacing. */
+        vm_timer_tick(&timer, 33);
+    }
+}
+#else
 static void util_crossfade(struct param_list *params)
 {
 	// XXX: params are always the same except for start/end alpha
@@ -691,6 +829,7 @@ static void util_crossfade(struct param_list *params)
 	if (end_a == 255)
 		gfx_copy(0, 0, 640, 480, 3, 0, 0, 0);
 }
+#endif
 
 static struct cg *bad_end_cg[13] = {0};
 
@@ -704,6 +843,21 @@ static void util_bad_end_prepare(struct param_list *params)
 	}
 }
 
+#ifdef ISAKU_SWITCH_PORT
+static void util_bad_end_play(struct param_list *params)
+{
+	vm_timer_t timer = vm_timer_create();
+	for (int i = 0; i < 13; i++) {
+		if (bad_end_cg[i]) {
+			gfx_draw_cg(0, bad_end_cg[i]);
+			cg_free(bad_end_cg[i]);
+			bad_end_cg[i] = NULL;
+		}
+		vm_peek();
+		vm_timer_tick(&timer, 50);
+	}
+}
+#else
 static void util_bad_end_play(struct param_list *params)
 {
 	vm_timer_t timer = vm_timer_create();
@@ -716,6 +870,7 @@ static void util_bad_end_play(struct param_list *params)
 		vm_timer_tick(&timer, 50);
 	}
 }
+#endif
 
 static void util_enable_builtin_se(struct param_list *params)
 {
@@ -731,6 +886,37 @@ static void util_disable_builtin_se(struct param_list *params)
  * Credits upwards scroll animation. There is an alpha gradient at the top and
  * bottom of the target area.
  */
+#ifdef ISAKU_SWITCH_PORT
+static void util_credits_scroll(struct param_list *params)
+{
+    /* EXE 00409e95..0040a03b: frame count is the script argument; source
+     * scroll begins at frame 162. 00413b70 supplies the 31-level edge blend. */
+    const unsigned frames = vm_expr_param(params, 1);
+    const uint32_t mask = mem_get_sysvar16(mes_sysvar16_mask_color);
+    SDL_Surface *front = gfx_get_surface(4), *back = gfx_get_surface(3);
+    SDL_Surface *dst = gfx_get_surface(0);
+    vm_timer_t timer = vm_timer_create();
+    for (unsigned frame = 1; frame <= frames; frame++) {
+        int dy = max(160, 320 - (int)frame);
+        int sy = max(0, (int)frame - 161);
+        int h = min(160, frame);
+        gfx_copy(140, 160, 360, 160, 3, 140, 160, 4);
+        gfx_copy_masked(140, sy, 360, h, 1, 140, dy, 4, mask);
+        unsigned weight = 0;
+        for (unsigned row = 0; row < 160; row++) {
+            weight = row < 128 ? min(31, weight + 1) : (weight ? weight - 1 : 0);
+            const uint8_t *a = (uint8_t*)front->pixels + (160 + row) * front->pitch + 140 * 3;
+            const uint8_t *b = (uint8_t*)back->pixels + (160 + row) * back->pitch + 140 * 3;
+            uint8_t *d = (uint8_t*)dst->pixels + (160 + row) * dst->pitch + 140 * 3;
+            for (unsigned x = 0; x < 360 * 3; x++)
+                d[x] = isaku_blend_channel(a[x], b[x], weight);
+        }
+        gfx_dirty(0, 140, 160, 360, 160);
+        vm_peek();
+        vm_timer_tick(&timer, input_down(INPUT_SHIFT) ? 0 : 48);
+    }
+}
+#else
 static void util_credits_scroll(struct param_list *params)
 {
 	SDL_Rect r = { 140, 160, 360, 160 };
@@ -800,6 +986,7 @@ static void util_credits_scroll(struct param_list *params)
 	gfx_overlay_disable(0);
 	SDL_CALL(SDL_SetColorKey, src, SDL_FALSE, 0);
 }
+#endif
 
 static void item_window_clicked(void *_)
 {
@@ -851,12 +1038,92 @@ static void move_speed_clicked(int index, void *_)
 	dungeon_set_move_speed(index);
 }
 
+#ifdef ISAKU_SWITCH_PORT
+static void quit_game_clicked(void *_)
+{
+#ifdef __SWITCH__
+	sys_exit(0);
+#else
+	if (gfx_confirm_quit())
+		sys_exit(0);
+#endif
+}
+#else
 static void quit_game_clicked(void *_)
 {
 	if (gfx_confirm_quit())
 		sys_exit(0);
 }
+#endif
 
+#ifdef ISAKU_SWITCH_PORT
+static bool context_menu_active;
+#endif
+
+#ifdef ISAKU_SWITCH_PORT
+static void open_context_menu(void)
+{
+	if (context_menu_active) return;
+	context_menu_active = true;
+	bool chs = ai5_text_encoding() == AI5_TEXT_ENCODING_GBK;
+	struct menu *m = popup_menu_new();
+	int item_id = popup_menu_append_entry(m, 1, (chs ? "道具栏" : "Item Window"), "Space", item_window_clicked, NULL);
+	int save_id = popup_menu_append_entry(m, 4, (chs ? "存档" : "Save Data"), "S", save_data_clicked, NULL);
+	int load_id = popup_menu_append_entry(m, 3, (chs ? "读档" : "Load Data"), "L", load_data_clicked, NULL);
+	popup_menu_append_separator(m);
+	int msg_id = popup_menu_append_entry(m, -1, (chs ? "隐藏消息" : "Hide Message"), "Tab", hide_message_clicked, NULL);
+	popup_menu_append_separator(m);
+
+	const char *on_off[] = { (chs ? "开启" : "On"), (chs ? "关闭" : "Off") };
+	const char *fast_normal_slow[] = { (chs ? "快速" : "Fast"), (chs ? "普通" : "Normal"), (chs ? "慢速" : "Slow") };
+
+	bool audio_enabled = vm_flag_is_on(FLAG_AUDIO_ENABLE);
+	struct menu *music = popup_menu_new();
+	popup_menu_append_radio_group(music, on_off, 2, audio_enabled ? 0 : 1,
+			music_enabled_clicked, NULL);
+	bool voice_enabled = vm_flag_is_on(FLAG_VOICE_ENABLE);
+	struct menu *voice = popup_menu_new();
+	popup_menu_append_radio_group(voice, on_off, 2, voice_enabled ? 0 : 1,
+			voice_enabled_clicked, NULL);
+	struct menu *move_speed = popup_menu_new();
+	popup_menu_append_radio_group(move_speed, fast_normal_slow, 3, dungeon_get_move_speed(),
+			move_speed_clicked, NULL);
+
+	struct menu *options = popup_menu_new();
+	popup_menu_append_submenu(options, -1, (chs ? "音乐与音效" : "Music"), music);
+	popup_menu_append_submenu(options, -1, (chs ? "语音" : "Voice"), voice);
+	//popup_menu_append_entry(options, -1, "Volume Control", NULL, NULL, NULL);
+	popup_menu_append_submenu(options, -1, (chs ? "移动速度" : "Move Speed"), move_speed);
+	popup_menu_append_submenu(m, -1, (chs ? "设置" : "Options"), options);
+
+	popup_menu_append_separator(m);
+	popup_menu_append_entry(m, -1, (chs ? "退出游戏" : "Quit Game"), "Alt+F4", quit_game_clicked, NULL);
+	popup_menu_append_separator(m);
+	popup_menu_append_entry(m, -1, (chs ? "取消" : "Cancel"), NULL, NULL, NULL);
+
+	if (!isaku_item_window_is_enabled()) {
+		popup_menu_set_active(m, item_id, false);
+	}
+	if (!save_menu.enabled) {
+		popup_menu_set_active(m, save_id, false);
+	}
+	if (!load_menu.enabled) {
+		popup_menu_set_active(m, load_id, false);
+	}
+	if (!message_clear_enabled) {
+		popup_menu_set_active(m, msg_id, false);
+	}
+
+	// run menu at cursor
+	int win_x, win_y, mouse_x, mouse_y;
+	SDL_GetWindowPosition(gfx.window, &win_x, &win_y);
+	SDL_GetMouseState(&mouse_x, &mouse_y);
+	popup_menu_run(m, win_x + mouse_x, win_y + mouse_y);
+
+	popup_menu_free(m);
+	context_menu_active = false;
+}
+#else
 static void open_context_menu(void)
 {
 	struct menu *m = popup_menu_new();
@@ -915,7 +1182,30 @@ static void open_context_menu(void)
 
 	popup_menu_free(m);
 }
+#endif
 
+#ifdef ISAKU_SWITCH_PORT
+static bool isaku_handle_event(SDL_Event *e)
+{
+	if (context_menu_active) return false;
+	if (isaku_item_window_is_open() && isaku_item_window_event(e))
+		return true;
+
+	switch (e->type) {
+	case SDL_MOUSEBUTTONDOWN:
+		if (e->button.windowID == gfx.window_id && e->button.button == SDL_BUTTON_RIGHT)
+			return true;
+		break;
+	case SDL_MOUSEBUTTONUP:
+		if (e->button.windowID == gfx.window_id && e->button.button == SDL_BUTTON_RIGHT) {
+			open_context_menu();
+			return true;
+		}
+		break;
+	}
+	return false;
+}
+#else
 static bool isaku_handle_event(SDL_Event *e)
 {
 	if (isaku_item_window_is_open() && isaku_item_window_event(e))
@@ -935,6 +1225,7 @@ static bool isaku_handle_event(SDL_Event *e)
 	}
 	return false;
 }
+#endif
 
 static void isaku_draw_text(const char *text)
 {
@@ -944,6 +1235,23 @@ static void isaku_draw_text(const char *text)
 		vm_draw_text(text, 1);
 }
 
+#ifdef ISAKU_SWITCH_PORT
+static void isaku_init(void)
+{
+	audio_set_volume(AUDIO_CH_BGM, -1500);
+	audio_set_volume(AUDIO_CH_SE0, -1500);
+	audio_set_volume(AUDIO_CH_VOICE0, -500);
+	map_controller_button_implicitly(SDL_CONTROLLER_BUTTON_BACK, INPUT_S);
+	map_controller_button_implicitly(SDL_CONTROLLER_BUTTON_START, INPUT_L);
+	map_controller_button_implicitly(SDL_CONTROLLER_BUTTON_RIGHTSTICK, INPUT_BACKSPACE);
+#ifdef __SWITCH__
+	isaku_item_window_use_overlay();
+#else
+	if (config.controller.ui)
+		isaku_item_window_use_overlay();
+#endif
+}
+#else
 static void isaku_init(void)
 {
 	audio_set_volume(AUDIO_CH_BGM, -1500);
@@ -954,7 +1262,55 @@ static void isaku_init(void)
 	if (config.controller.ui)
 		isaku_item_window_use_overlay();
 }
+#endif
 
+#ifdef ISAKU_SWITCH_PORT
+static void isaku_update(void)
+{
+	// XXX: don't update when message is cleared so that behavior is consistent
+	//      when initiated from right-click menu vs. keypress
+	if (message_cleared)
+		return;
+
+	if (input_down(INPUT_BACKSPACE) && !context_menu_active) {
+		_input_wait_until_up(INPUT_BACKSPACE);
+		open_context_menu();
+	}
+	if (input_down(INPUT_SPACE)) {
+		_input_wait_until_up(INPUT_SPACE);
+		isaku_item_window_toggle();
+	}
+	if (input_down(INPUT_S)) {
+		_input_wait_until_up(INPUT_S);
+		menu_open(&save_menu);
+	}
+	if (input_down(INPUT_L)) {
+		_input_wait_until_up(INPUT_L);
+		menu_open(&load_menu);
+	}
+	if (input_down(INPUT_TAB)) {
+		_input_wait_until_up(INPUT_TAB);
+		message_clear();
+	}
+	isaku_item_window_tick();
+
+	if (!mem_get_var4(2007) || !overlay_on)
+		return;
+	if (!gfx_is_dirty(5))
+		return;
+
+	// copy text to overlay
+	gfx_overlay_enable(0);
+	SDL_Color mask = gfx_decode_bgr555(mem_get_sysvar16(mes_sysvar16_mask_color));
+	SDL_Rect rect = { 0, 388, 640, 72 };
+	SDL_Surface *src = gfx_get_surface(5);
+	SDL_Surface *dst = gfx_get_overlay(0);
+	SDL_CALL(SDL_SetColorKey, src, SDL_TRUE, SDL_MapRGB(src->format, mask.r, mask.g, mask.b));
+	SDL_CALL(SDL_BlitSurface, src, &rect, dst, &rect);
+	SDL_CALL(SDL_SetColorKey, src, SDL_FALSE, 0);
+	gfx_clean(5);
+}
+#else
 static void isaku_update(void)
 {
 	// XXX: don't update when message is cleared so that behavior is consistent
@@ -996,6 +1352,7 @@ static void isaku_update(void)
 	SDL_CALL(SDL_SetColorKey, src, SDL_FALSE, 0);
 	gfx_clean(5);
 }
+#endif
 
 struct game game_isaku = {
 	.id = GAME_ISAKU,

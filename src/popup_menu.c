@@ -14,6 +14,8 @@
  * along with this program; if not, see <http://gnu.org/licenses/>.
  */
 
+#include "isaku_switch.h"
+
 #include <SDL.h>
 
 #include "nulib/vector.h"
@@ -820,8 +822,18 @@ static void run_delayed_close(struct popup_delayed_close *d)
 	popup_window_free(d->window);
 }
 
+#ifdef ISAKU_SWITCH_PORT
+#include "switch_popup.inc"
+#endif
+
 void popup_menu_run(struct menu *m, int x, int y)
 {
+#ifdef ISAKU_SWITCH_PORT
+	if (isaku_switch_active()) {
+		switch_popup_run(m);
+		return;
+	}
+#endif
 	wayland = !strcmp(SDL_GetCurrentVideoDriver(), "wayland");
 
 	struct menu_window w;

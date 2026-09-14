@@ -14,6 +14,8 @@
  * along with this program; if not, see <http://gnu.org/licenses/>.
  */
 
+#include "isaku_switch.h"
+
 #include <SDL_ttf.h>
 
 #ifdef __SWITCH__
@@ -24,6 +26,7 @@
 #include "nulib.h"
 #include "nulib/file.h"
 #include "ai5/mes.h"
+#include "ai5/game.h"
 
 #include "ai5.h"
 #include "game.h"
@@ -297,7 +300,13 @@ void gfx_text_init(const char *font_path, int face)
 	if (TTF_Init() == -1)
 		ERROR("TTF_Init: %s", TTF_GetError());
 
-	init_ui_font();
+    if (isaku_switch_active() && font_path && ai5_text_encoding() == AI5_TEXT_ENCODING_GBK) {
+        font_spec[FONT_UI] = (struct font_spec) {
+            .path = xstrdup(font_path), .face = face < 0 ? 0 : face,
+        };
+    } else {
+        init_ui_font();
+    }
 	if (font_path) {
 		// XXX: we override the default face for msgothic on yuno-eng
 		int face_eng = face;

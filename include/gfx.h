@@ -41,6 +41,7 @@ static inline float gfx_game_to_logical_y(float y) { return y * (float)GFX_DISPL
 void gfx_init(const char *name);
 void gfx_set_icon(void);
 void gfx_update(void);
+void gfx_update_pending(void);
 void gfx_dirty(unsigned surface, int x, int y, int w, int h);
 void gfx_screen_dirty(void);
 void gfx_whole_surface_dirty(unsigned surface);

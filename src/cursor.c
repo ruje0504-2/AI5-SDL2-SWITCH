@@ -14,6 +14,8 @@
  * along with this program; if not, see <http://gnu.org/licenses/>.
  */
 
+#include "isaku_switch.h"
+
 #include <stdlib.h>
 #include <stdatomic.h>
 #include <stdio.h>
@@ -26,6 +28,7 @@
 #include "nulib/little_endian.h"
 
 #include "ai5.h"
+#include "ai5/game.h"
 #include "ai5/cg.h"
 #include "cursor.h"
 #include "gfx_private.h"
@@ -734,6 +737,8 @@ static atomic_uint cursor_nr_frames = 2;
 static atomic_uint cursor_frame = 0;
 static atomic_uint cursor_frame_time[CURSOR_MAX_FRAMES] = { 500, 500 };
 
+#include "native_cursor.inc"
+
 static int nr_icons = 0;
 static SDL_Surface **icons = NULL;
 static struct cg **icon_cgs = NULL;
@@ -788,7 +793,7 @@ void read_cursors(struct buffer *b, struct resource *root)
 			WARNING("Couldn't find cursor for group_cursor %d", i);
 			continue;
 		}
-		cursors[i] = read_cursor(b, cur_res);
+		if (!native_enabled) cursors[i] = read_cursor(b, cur_res);
 	}
 
 	nr_icons = group_icon->nr_children;
@@ -835,6 +840,10 @@ static void cursor_fini(void)
 		SDL_FreeCursor(cursors[i]);
 	}
 	free(cursors);
+	if (native_enabled) {
+		SDL_DestroyTexture(native_texture);
+		free(native_cursors);
+	}
 }
 
 static uint32_t anim_cb(uint32_t interval, void *_)
@@ -847,7 +856,8 @@ static uint32_t anim_cb(uint32_t interval, void *_)
 
 void cursor_init(const char *exe_path)
 {
-	system_cursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_ARROW);
+	native_cursor_init();
+	if (!native_enabled) system_cursor = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_ARROW);
 	if (!exe_path)
 		return;
 
@@ -946,7 +956,7 @@ void cursor_load(unsigned no, unsigned nr_frames, unsigned *frame_time)
 		return;
 	}
 	for (unsigned i = 0; i < nr_frames; i++) {
-		if (!cursors[no+i]) {
+		if (!native_enabled && !cursors[no+i]) {
 			WARNING("Frame %u not loaded for cursor %u", i, no);
 			return;
 		}
@@ -972,7 +982,8 @@ void cursor_unload(void)
 	CURSOR_LOG("cursor_unload()");
 	cursor_animating = false;
 	cursor_loaded = false;
-	SDL_SetCursor(system_cursor);
+	if (!native_enabled) SDL_SetCursor(system_cursor);
+	if (native_enabled) gfx_screen_dirty();
 }
 
 void cursor_reload(void)
@@ -990,14 +1001,18 @@ void cursor_show(void)
 	CURSOR_LOG("cursor_show()");
 	if (cursor_loaded)
 		cursor_animating = true;
-	SDL_ShowCursor(SDL_ENABLE);
+	native_visible = true;
+	if (!native_enabled) SDL_ShowCursor(SDL_ENABLE);
+	if (native_enabled) gfx_screen_dirty();
 }
 
 void cursor_hide(void)
 {
 	CURSOR_LOG("cursor_hide()");
 	cursor_animating = false;
+	native_visible = false;
 	SDL_ShowCursor(SDL_DISABLE);
+	if (native_enabled) gfx_screen_dirty();
 }
 
 #ifdef __SWITCH__
@@ -1016,6 +1031,7 @@ void cursor_set_pos(unsigned x, unsigned y)
 #ifdef __SWITCH__
 	switch_cursor_x = (float)x;
 	switch_cursor_y = (float)y;
+	if (native_enabled) gfx_screen_dirty();
 #else
 	int wx, wy;
 	SDL_RenderLogicalToWindow(gfx.renderer, x, y, &wx, &wy);
@@ -1033,7 +1049,7 @@ void cursor_move_stick(float dx, float dy)
 	if (nx != switch_cursor_x || ny != switch_cursor_y) {
 		switch_cursor_x = nx;
 		switch_cursor_y = ny;
-		gfx_screen_dirty();
+		if (native_enabled) gfx_screen_dirty();
 	}
 #else
 	(void)dx;
@@ -1065,7 +1081,8 @@ void cursor_swap(void)
 		return;
 
 	cursor_frame = (cursor_frame + 1) % cursor_nr_frames;
-	SDL_SetCursor(cursors[current_cursor + cursor_frame]);
+	if (!native_enabled) SDL_SetCursor(cursors[current_cursor + cursor_frame]);
+	if (native_enabled) gfx_screen_dirty();
 }
 
 static enum cursor_direction cursor_dir = CURSOR_DIR_NONE;
@@ -1078,4 +1095,15 @@ void cursor_set_direction(enum cursor_direction dir)
 enum cursor_direction cursor_get_direction(void)
 {
 	return cursor_dir;
+}
+
+void cursor_pointer_motion(float x, float y)
+{
+#ifdef __SWITCH__
+ switch_cursor_x = clamp(0.0f, (float)gfx_view.w - 1, x);
+ switch_cursor_y = clamp(0.0f, (float)gfx_view.h - 1, y);
+#else
+ (void)x; (void)y;
+#endif
+ if (native_enabled) gfx_screen_dirty();
 }

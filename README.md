@@ -3,6 +3,19 @@ AI5-SDL2
 
 AI5-SDL2 is a cross-platform implementation of elf's AI5WIN game engine.
 
+Isaku Renewal Switch port / 遗作 Switch 移植
+-----------------------------------------
+
+遗作日文版及自备汉化包的 Switch 适配采用独立开关，默认关闭。
+使用 `-Disaku_switch=true` 构建 Horizon 版本才启用；共享代码同时检查游戏类型，
+普通桌面构建、默认 Switch 构建及其他游戏保留原有行为。
+
+本次更新包含原版鼠标绘制、场景刷新与演出、存档初始化/语音修复，以及
+自备 CHS.ARC / HATA.ARC 的 GBK 文本支持。源码不包含游戏资源或汉化包。
+构建命令、SD 卡目录、汉化配置、按键和存档说明见
+[Isaku Switch 使用说明](switch-src/isaku/README.md)，
+隔离回归检查见 [测试说明](tests/isaku-switch/README.md)。
+
 Compatibility
 -------------
 

@@ -1,1 +1,5 @@
 option('sdl_mixer', type : 'feature', value : 'disabled')
+
+option('movies', type : 'feature', value : 'auto')
+
+option('isaku_switch', type : 'boolean', value : false, description : 'Enable the isolated Isaku Switch port')

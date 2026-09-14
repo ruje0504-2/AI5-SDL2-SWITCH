@@ -14,6 +14,8 @@
  * along with this program; if not, see <http://gnu.org/licenses/>.
  */
 
+#include "isaku_switch.h"
+
 #include <SDL.h>
 
 #include "nulib.h"
@@ -159,11 +161,15 @@ void map_controller_button_implicitly(int btn, enum input_event_type e)
 
 void input_init(void)
 {
+	/* The 30ms minimum press duration must not fabricate startup presses. */
+	if (isaku_switch_active()) for (unsigned i = 0; i < INPUT_NR_INPUTS; i++)
+		key_down_timestamp[i] = SDL_GetTicks() - 30;
 	cursor_swap_event = SDL_RegisterEvents(1);
 	if (cursor_swap_event == (uint32_t)-1)
 		WARNING("Failed to register custom event type");
 
-	find_controller();
+	if (isaku_switch_active()) controller = find_controller();
+	else find_controller();
 #ifdef __SWITCH__
 	/* On Switch, SDL2's joystick driver reports the controller as a plain
 	 * joystick that the game-controller subsystem does not recognise, so add
@@ -184,6 +190,7 @@ void input_init(void)
 			gs, name);
 		SDL_GameControllerAddMapping(mapping);
 	}
+	if (isaku_switch_active() && !controller) controller = find_controller();
 	if (!controller && SDL_NumJoysticks() > 0)
 		joystick = SDL_JoystickOpen(0);
 #endif
@@ -304,8 +311,12 @@ static void controller_update_analog(void)
 	if (config.controller.right_stick == CONFIG_STICK_CURSOR) {
 		float this_x = controller_get_stick_axis(SDL_CONTROLLER_AXIS_RIGHTX);
 		float this_y = controller_get_stick_axis(SDL_CONTROLLER_AXIS_RIGHTY);
-		stick_x = clamp(-1.0f, 1.0f, stick_x + this_x);
-		stick_y = clamp(-1.0f, 1.0f, stick_y + this_y);
+		if (!isaku_switch_active()) {
+            stick_x = clamp(-1.0f, 1.0f, stick_x + this_x);
+            stick_y = clamp(-1.0f, 1.0f, stick_y + this_y);
+        } else if (this_x * this_x + this_y * this_y > stick_x * stick_x + stick_y * stick_y) {
+			stick_x = this_x; stick_y = this_y;
+		}
 	}
 
 	if (fabsf(stick_x) > 0.01f || fabsf(stick_y) > 0.01f)
@@ -374,15 +385,20 @@ static enum input_event_type joystick_button_to_event(int b)
 	case 1:  return INPUT_CANCEL;     // B
 	case 2:  return INPUT_CTRL;       // X
 	case 3:  return INPUT_SPACE;      // Y
+	case 5:  if (isaku_switch_active()) return INPUT_BACKSPACE; else break; // R-stick click: context menu
 	case 6:  return INPUT_PAGE_UP;    // L
 	case 7:  return INPUT_PAGE_DOWN;  // R
-	case 10: return INPUT_SPACE;      // + (menu)
+	case 8:  if (isaku_switch_active()) return INPUT_SHIFT; else break;      // ZL: skip timed waits
+	case 9:  if (isaku_switch_active()) return INPUT_TAB; else break;        // ZR: hide/show message
+	case 10: return isaku_switch_active() ? INPUT_L : INPUT_SPACE;          // +: load
+	case 11: if (isaku_switch_active()) return INPUT_S; else break;          // -: save
 	case 12: return INPUT_LEFT;       // d-pad left
 	case 13: return INPUT_UP;         // d-pad up
 	case 14: return INPUT_RIGHT;      // d-pad right
 	case 15: return INPUT_DOWN;       // d-pad down
 	default: return INPUT_NONE;
 	}
+	return INPUT_NONE;
 }
 
 static void joystick_button_event(SDL_JoyButtonEvent *ev)
@@ -408,7 +424,7 @@ static float joystick_get_axis(int axis)
 
 static void joystick_update_analog(void)
 {
-	if (!config.controller.enabled || !joystick)
+	if (!config.controller.enabled || (isaku_switch_active() && controller) || !joystick)
 		return;
 	if (!vm_timer_tick_async(&joystick_poll_timer, 33))
 		return;
@@ -418,9 +434,13 @@ static void joystick_update_analog(void)
 		stick_x = joystick_get_axis(0);  // left stick X
 		stick_y = joystick_get_axis(1);  // left stick Y
 	}
-	// Right stick counts as cursor activity too (for the auto-hide check)
+	// Both sticks control the same pointer; choose the stronger vector.
 	float rsx = joystick_get_axis(2);
 	float rsy = joystick_get_axis(3);
+	if (isaku_switch_active() && config.controller.right_stick == CONFIG_STICK_CURSOR
+            && rsx * rsx + rsy * rsy > stick_x * stick_x + stick_y * stick_y) {
+		stick_x = rsx; stick_y = rsy;
+	}
 	if (fabsf(stick_x) > 0.01f || fabsf(stick_y) > 0.01f
 			|| fabsf(rsx) > 0.01f || fabsf(rsy) > 0.01f)
 		cursor_last_activity = SDL_GetTicks();
@@ -456,6 +476,9 @@ void handle_events(void)
 		if (game->handle_event && game->handle_event(&e))
 			continue;
 		switch (e.type) {
+		case SDL_QUIT:
+			if (isaku_switch_active()) sys_exit(0);
+			break;
 		case SDL_WINDOWEVENT:
 			handle_window_event(&e.window);
 			break;
@@ -476,6 +499,15 @@ void handle_events(void)
 				break;
 			key_event(&e.key, false);
 			break;
+		case SDL_MOUSEMOTION:
+            if (!isaku_switch_active() || e.motion.windowID != gfx.window_id) break;
+#ifdef __SWITCH__
+            cursor_pointer_motion(gfx_logical_to_game_x(e.motion.x), gfx_logical_to_game_y(e.motion.y));
+#else
+            cursor_pointer_motion(e.motion.x, e.motion.y);
+#endif
+            cursor_last_activity = SDL_GetTicks();
+            break;
 		case SDL_MOUSEBUTTONDOWN:
 			if (e.button.windowID != gfx.window_id)
 				break;
@@ -512,7 +544,7 @@ void handle_events(void)
 #ifdef __SWITCH__
 		case SDL_JOYBUTTONDOWN:
 		case SDL_JOYBUTTONUP:
-			if (joystick && e.jbutton.which == SDL_JoystickInstanceID(joystick))
+			if ((!isaku_switch_active() || !controller) && joystick && e.jbutton.which == SDL_JoystickInstanceID(joystick))
 				joystick_button_event(&e.jbutton);
 			break;
 #endif

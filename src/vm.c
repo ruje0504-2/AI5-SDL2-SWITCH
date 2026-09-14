@@ -14,6 +14,8 @@
  * along with this program; if not, see <http://gnu.org/licenses/>.
  */
 
+#include "isaku_switch.h"
+
 #include <stdlib.h>
 #include <stdarg.h>
 #include <string.h>
@@ -468,6 +470,25 @@ static uint16_t char_closer[] = {
 
 bool char_is_opener(const char *_ch)
 {
+    if (isaku_switch_active() && ai5_text_encoding() == AI5_TEXT_ENCODING_GBK) {
+        int ch;
+        ai5_text_char2unicode(_ch, &ch);
+        switch (ch) {
+        case 0x2018:
+        case 0x201c:
+        case 0x3008:
+        case 0x300a:
+        case 0x300c:
+        case 0x300e:
+        case 0x3010:
+        case 0xff08:
+        case 0xff3b:
+        case 0xff5b:
+            return true;
+        default: return false;
+        }
+    }
+
 	const uint8_t *ch = (const uint8_t*)_ch;
 	if (ch[0] != 0x81 || ch[1] < 0x69 || ch[1] > 0x79)
 		return false;
@@ -480,6 +501,33 @@ bool char_is_opener(const char *_ch)
 
 bool char_is_closer(const char *_ch)
 {
+    if (isaku_switch_active() && ai5_text_encoding() == AI5_TEXT_ENCODING_GBK) {
+        int ch;
+        ai5_text_char2unicode(_ch, &ch);
+        switch (ch) {
+        case 0x2019:
+        case 0x201d:
+        case 0x3001:
+        case 0x3002:
+        case 0x3009:
+        case 0x300b:
+        case 0x300d:
+        case 0x300f:
+        case 0x3011:
+        case 0xff01:
+        case 0xff09:
+        case 0xff0c:
+        case 0xff0e:
+        case 0xff1a:
+        case 0xff1b:
+        case 0xff1f:
+        case 0xff3d:
+        case 0xff5d:
+            return true;
+        default: return false;
+        }
+    }
+
 	const uint8_t *ch = (const uint8_t*)_ch;
 	if (ch[0] != 0x81 || ch[1] < 0x41 || ch[1] > 0x7a)
 		return false;
@@ -542,6 +590,13 @@ static void read_zenkaku(char *str)
 	uint8_t c;
 	int str_i = 0;
 	while ((c = vm_peek_byte())) {
+        /* The supplied CHS scripts mix ASCII into double-byte text blocks. */
+        if (isaku_switch_active() && ai5_text_encoding() == AI5_TEXT_ENCODING_GBK && c >= 0x20 && c < 0x7f) {
+            if (str_i >= VM_TXT_BUF_SIZE - 1) VM_ERROR("Text buffer overflow");
+            str[str_i++] = vm_read_byte();
+            continue;
+        }
+        if (isaku_switch_active() && str_i >= VM_TXT_BUF_SIZE - 2) VM_ERROR("Text buffer overflow");
 		if (unlikely(!mes_char_is_zenkaku(c)))
 			goto unterminated;
 		str[str_i++] = vm_read_byte();
@@ -1236,7 +1291,7 @@ void vm_peek(void)
 		in_game_update = false;
 	}
 
-	gfx_update();
+	gfx_update_pending();
 }
 
 void vm_exec(void)

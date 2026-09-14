@@ -14,6 +14,8 @@
  * along with this program; if not, see <http://gnu.org/licenses/>.
  */
 
+#include "isaku_switch.h"
+
 #include <SDL.h>
 #include "nulib.h"
 #include "ai5.h"
@@ -261,6 +263,28 @@ void isaku_item_window_get_pos(int *x, int *y, int *w, int *h)
 	*h = *y + ITEM_WINDOW_H - 1;
 }
 
+#ifdef ISAKU_SWITCH_PORT
+void isaku_item_window_get_cursor_pos(int *x, int *y)
+{
+	if (!item_window.enabled) {
+		*x = ITEM_WINDOW_W;
+		*y = ITEM_WINDOW_H;
+	} else if (item_window.use_overlay) {
+        unsigned gx,gy;cursor_get_pos(&gx,&gy);
+        *x = (int)gx - OVERLAY_X;
+        *y = (int)gy - OVERLAY_Y;
+	} else if (!item_window.window || SDL_GetMouseFocus() != item_window.window) {
+		*x = ITEM_WINDOW_W;
+		*y = ITEM_WINDOW_H;
+	} else {
+		SDL_GetMouseState(x, y);
+	}
+
+	if (*x >= 0 && *x < ITEM_WINDOW_W && *y >= 0 && *y < ITEM_WINDOW_H) {
+		item_window.selected = *x / 32;
+	}
+}
+#else
 void isaku_item_window_get_cursor_pos(int *x, int *y)
 {
 	if (!item_window.enabled) {
@@ -285,6 +309,7 @@ void isaku_item_window_get_cursor_pos(int *x, int *y)
 		item_window.selected = *x / 32;
 	}
 }
+#endif
 
 void isaku_item_window_enable(void)
 {

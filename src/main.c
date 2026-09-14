@@ -14,6 +14,8 @@
  * along with this program; if not, see <http://gnu.org/licenses/>.
  */
 
+#include "isaku_switch.h"
+
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
@@ -637,9 +639,21 @@ int main(int argc, char *argv[])
 		 * (The RomFS layout is already handled by ai5_switch_storage_init,
 		 * so we must not -- and need not -- chdir again.) */
 		static const char *default_dirs[] = {
-			"/switch/syuusaku",
-			"/switch/ai5/syuusaku",
-			"/switch/ai5-sdl2/syuusaku",
+#ifdef ISAKU_SWITCH_PORT
+            "/switch/isaku",
+#else
+            "/switch/syuusaku",
+#endif
+#ifdef ISAKU_SWITCH_PORT
+            "/switch/ai5/isaku",
+#else
+            "/switch/ai5/syuusaku",
+#endif
+#ifdef ISAKU_SWITCH_PORT
+            "/switch/ai5-sdl2/isaku",
+#else
+            "/switch/ai5-sdl2/syuusaku",
+#endif
 			NULL
 		};
 		for (int i = 0; default_dirs[i]; i++) {

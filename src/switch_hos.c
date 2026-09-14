@@ -7,7 +7,7 @@
  *     RomFS and save files live in HOS SaveData mounted at "save:/".
  *
  *  2. Homebrew NRO launched from hbmenu: game data lives on the SD card under
- *     /switch/syuusaku (or friends) and save files are written next to the
+ *     /switch/isaku (or friends) and save files are written next to the
  *     data (legacy behaviour).  No RomFS/SaveData is available in that
  *     context, so everything falls back to plain file I/O in the cwd.
  *
@@ -19,6 +19,8 @@
  */
 
 #ifdef __SWITCH__
+
+#include "isaku_switch.h"
 
 #include <stdio.h>
 #include <sys/stat.h>
@@ -87,9 +89,21 @@ static void select_data_dir(void)
 	}
 
 	static const char *sd_dirs[] = {
-		"/switch/syuusaku",
-		"/switch/ai5/syuusaku",
-		"/switch/ai5-sdl2/syuusaku",
+#ifdef ISAKU_SWITCH_PORT
+            "/switch/isaku",
+#else
+            "/switch/syuusaku",
+#endif
+#ifdef ISAKU_SWITCH_PORT
+            "/switch/ai5/isaku",
+#else
+            "/switch/ai5/syuusaku",
+#endif
+#ifdef ISAKU_SWITCH_PORT
+            "/switch/ai5-sdl2/isaku",
+#else
+            "/switch/ai5-sdl2/syuusaku",
+#endif
 		NULL
 	};
 	for (int i = 0; sd_dirs[i]; i++) {

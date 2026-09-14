@@ -14,6 +14,8 @@
  * along with this program; if not, see <http://gnu.org/licenses/>.
  */
 
+#include "isaku_switch.h"
+
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
@@ -26,6 +28,8 @@
 #include "memory.h"
 #include "savedata.h"
 #include "vm.h"
+#include "ai5/game.h"
+#include "isaku/save_template.h"
 
 #ifdef __SWITCH__
 #include <switch.h>
@@ -81,6 +85,8 @@ static void create_save(const char *save_name)
 	}
 	uint8_t buf[MEMORY_MEM16_MAX_SIZE];
 	memset(buf, 0, game->mem16_size);
+    if (isaku_switch_active())
+        memcpy(buf, isaku_save_template, sizeof(isaku_save_template));
 	if (fwrite(buf, game->mem16_size, 1, f) != 1)
 		WARNING("fwrite: %s", strerror(errno));
 	close_save(f);
@@ -131,6 +137,18 @@ void savedata_read(const char *save_name, uint8_t *buf, uint32_t off, size_t siz
 			WARNING("Failed to open save file \"%s\": %s", save_name, strerror(errno));
 		return;
 	}
+    if (isaku_switch_active() && off <= 4096 && size <= 4096 - off) {
+        uint8_t data[4096];
+        if (fread(data, 1, sizeof(data), f) == sizeof(data)) {
+            if (isaku_repair_empty_save(data))
+                WARNING("Restored missing Isaku initialization in %s (file unchanged)", save_name);
+            memcpy(buf + off, data + off, size);
+        } else {
+            WARNING("Invalid Isaku save size: %s", save_name);
+        }
+        close_save(f);
+        return;
+    }
 	if (off && fseek(f, off, SEEK_SET) < 0)
 		WARNING("fseek: %s", strerror(errno));
 	if (fread(buf + off, size, 1, f) != 1)

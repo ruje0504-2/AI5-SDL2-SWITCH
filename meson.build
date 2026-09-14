@@ -2,6 +2,13 @@ project('ai5_sdl2', 'c', default_options : ['c_std=c11', 'b_ndebug=if-release'])
 add_project_arguments('-D_DEFAULT_SOURCE', language : 'c')
 add_project_arguments('-DAI5_DATA_DIR="' + get_option('prefix') / get_option('datadir') / 'ai5-sdl2"', language : 'c')
 
+if get_option('isaku_switch')
+  if host_machine.system() != 'horizon'
+    error('isaku_switch is only supported for Horizon builds')
+  endif
+  add_project_arguments('-DAI5_ISAKU_SWITCH_BUILD', language : 'c')
+endif
+
 static_libs = false
 static_link_args = []
 embed_fonts = false
@@ -21,10 +28,10 @@ libm = meson.get_compiler('c').find_library('m', required: false)
 sdl2 = dependency('sdl2', static : static_libs)
 sdl2_ttf = dependency('SDL2_ttf', static : static_libs)
 
-avcodec = dependency('libavcodec', required: false, static : static_libs)
-avformat = dependency('libavformat', required: false, static : static_libs)
-avutil = dependency('libavutil', required: false, static : static_libs)
-swscale = dependency('libswscale', required: false, static : static_libs)
+avcodec = dependency('libavcodec', required: get_option('movies'), static : static_libs)
+avformat = dependency('libavformat', required: get_option('movies'), static : static_libs)
+avutil = dependency('libavutil', required: get_option('movies'), static : static_libs)
+swscale = dependency('libswscale', required: get_option('movies'), static : static_libs)
 
 libai5_proj = subproject('libai5')
 libai5_dep = libai5_proj.get_variable('libai5_dep')

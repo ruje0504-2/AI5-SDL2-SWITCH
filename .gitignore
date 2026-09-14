@@ -1,0 +1,4 @@
+/build-isaku-switch/
+__pycache__/
+*.pyc
+subprojects/.wraplock

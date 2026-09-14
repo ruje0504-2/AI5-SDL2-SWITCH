@@ -1,0 +1,21 @@
+name: Isaku Switch isolation
+on: [push, pull_request, workflow_dispatch]
+jobs:
+  host-regressions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y meson ninja-build libpng-dev libsndfile1-dev libsdl2-dev libsdl2-ttf-dev
+      - name: Default desktop behavior
+        run: |
+          meson setup build-default -Dmovies=disabled
+          ninja -C build-default
+          python3 tests/isaku-switch/run.py --build build-default scope
+      - name: Isaku and non-target game regression fixtures
+        run: |
+          meson setup build-isaku-test -Dmovies=disabled '-Dc_args=-DAI5_ISAKU_SWITCH_BUILD -DAI5_ISAKU_SWITCH_TEST'
+          ninja -C build-isaku-test
+          python3 tests/isaku-switch/run.py --build build-isaku-test --chs-font fonts/DotGothic16-Regular.ttf scope isaku_save_init fidelity refresh_benchmark chs_text
